@@ -1,0 +1,6 @@
+../Core/Src/comm_modbus.c:30:10:modbus_protocol_read	16	static
+../Core/Src/comm_modbus.c:38:10:modbus_protocol_write	24	static
+../Core/Src/comm_modbus.c:85:5:mbus_send	16	static
+../Core/Src/comm_modbus.c:92:6:Modbus_init	24	static
+../Core/Src/comm_modbus.c:126:6:modbus_process_new_data_to_fifo	24	static
+../Core/Src/comm_modbus.c:163:6:process_modbus_command	8	static
