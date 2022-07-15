@@ -28,6 +28,7 @@
 #include <math.h>
 #include "modbus.h"
 #include "inverter.h"
+#include "lookuptables.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -47,7 +48,7 @@
 
 /* Private variables ---------------------------------------------------------*/
 /* USER CODE BEGIN PV */
-volatile uint16_t ADC_rawdata[3];
+volatile uint16_t ADC_rawdata[4];
 
 /*volatile PID_t id_current_controller_data = {
 		1000.0f,0.0f,DUTY_CYCLE_LIMIT,DUTY_CYCLE_LIMIT,6.25E-05f,0.0f,0.0f,0.0f,0.0f
@@ -119,7 +120,7 @@ float last_filtered_actual_speed=0.0f;
 
 /* Private function prototypes -----------------------------------------------*/
 /* USER CODE BEGIN PFP */
-
+void output_svpwm(uint16_t angle,uint16_t max_duty_cycle);
 /* USER CODE END PFP */
 
 /* Private user code ---------------------------------------------------------*/
@@ -129,11 +130,12 @@ float last_filtered_actual_speed=0.0f;
 
 /* External variables --------------------------------------------------------*/
 extern DMA_HandleTypeDef hdma_adc1;
+extern TIM_HandleTypeDef htim1;
 extern DMA_HandleTypeDef hdma_usart1_rx;
 extern DMA_HandleTypeDef hdma_usart1_tx;
 extern UART_HandleTypeDef huart1;
 /* USER CODE BEGIN EV */
-
+extern ADC_HandleTypeDef hadc1;
 /* USER CODE END EV */
 
 /******************************************************************************/
@@ -257,6 +259,20 @@ void SysTick_Handler(void)
 /******************************************************************************/
 
 /**
+  * @brief This function handles TIM1 update interrupt and TIM10 global interrupt.
+  */
+void TIM1_UP_TIM10_IRQHandler(void)
+{
+  /* USER CODE BEGIN TIM1_UP_TIM10_IRQn 0 */
+	HAL_ADC_Start_DMA(&hadc1, ADC_rawdata, 2);
+  /* USER CODE END TIM1_UP_TIM10_IRQn 0 */
+  HAL_TIM_IRQHandler(&htim1);
+  /* USER CODE BEGIN TIM1_UP_TIM10_IRQn 1 */
+
+  /* USER CODE END TIM1_UP_TIM10_IRQn 1 */
+}
+
+/**
   * @brief This function handles USART1 global interrupt.
   */
 void USART1_IRQHandler(void)
@@ -276,7 +292,107 @@ void USART1_IRQHandler(void)
 void DMA2_Stream0_IRQHandler(void)
 {
   /* USER CODE BEGIN DMA2_Stream0_IRQn 0 */
+	if(zerocurrent_reading_loop_i<15){
+				I_U_zerocurrentreading+=ADC_rawdata[0];
+				I_V_zerocurrentreading+=ADC_rawdata[1];
+				if(zerocurrent_reading_loop_i==14){I_U_zerocurrentreading/=15;I_V_zerocurrentreading/=15;}
+				zerocurrent_reading_loop_i++;
+			}else{
 
+				/*if(ADC_rawdata[0]<40 || ADC_rawdata[1]<40 ||ADC_rawdata[0]>4000 || ADC_rawdata[1]>4000){
+					if(measurement_error_counter==1)inverter_error_trip(shortcircuit);
+					measurement_error_counter++;
+				}else{measurement_error_counter=0;}*/
+				//DC link voltage
+				U_DClink = (float)ADC_rawdata[2]*0.01006493f;
+				U_DClink_filtered = LowPassFilter(0.01f, U_DClink, &U_DClink_last);
+
+				//if(U_DClink_filtered>INVERTER_OVERVOLTAGE_LEVEL && OV_measurement_error_counter<2){if(OV_measurement_error_counter==1){inverter_error_trip(overvoltage);}OV_measurement_error_counter++;}else{OV_measurement_error_counter=0;}
+				//if(U_DClink_filtered<INVERTER_UNDERVOLTAGE_LEVEL && UV_measurement_error_counter<2){if(UV_measurement_error_counter==1){inverter_error_trip(undervoltage);}UV_measurement_error_counter++;}else{UV_measurement_error_counter=0;} //2 measurements under a treshold must happen in a row
+				modbus_registers_buffer[14] = (uint16_t)(U_DClink_filtered*10.0f);
+				//current calculation
+				I_U_raw=ADC_rawdata[0]-I_U_zerocurrentreading;
+				I_V_raw=ADC_rawdata[1]-I_V_zerocurrentreading;
+				I_U=(float)I_U_raw*CURRENT_SENSE_RATIO;
+				I_V=(float)I_V_raw*CURRENT_SENSE_RATIO;
+				I_W=-I_U-I_V;
+				//RMS current calculation loop
+
+				rms_count++;
+				I_U_square_sum+=(I_U*I_U);
+				I_V_square_sum+=(I_V*I_V);
+				I_W_square_sum+=(I_W*I_W);
+
+				if(rms_count>CURRENT_RMS_SAMPLING_COUNT){
+					I_U_RMS=sqrt(I_U_square_sum/(float)rms_count);
+					I_V_RMS=sqrt(I_V_square_sum/(float)rms_count);
+					I_W_RMS=sqrt(I_W_square_sum/(float)rms_count);
+					I_out=(I_U_RMS+I_V_RMS+I_W_RMS)/3.0f;
+					modbus_registers_buffer[10]=(uint16_t)(I_out*100.0f);
+					rms_count=0;I_U_square_sum=0.0f;I_V_square_sum=0.0f;I_W_square_sum=0.0f;}
+
+				if((I_U>INVERTER_OVERCURRENT_TRIP_LEVEL || I_U < (-INVERTER_OVERCURRENT_TRIP_LEVEL) || I_V>INVERTER_OVERCURRENT_TRIP_LEVEL || I_V < (-INVERTER_OVERCURRENT_TRIP_LEVEL) || I_W > INVERTER_OVERCURRENT_TRIP_LEVEL || I_W <(-INVERTER_OVERCURRENT_TRIP_LEVEL)) && OC_measurement_error_counter<3){
+					OC_measurement_error_counter++;
+					if(OC_measurement_error_counter==2){inverter_error_trip(overcurrent);}
+				}else{OC_measurement_error_counter=0;}
+
+
+				if(encoder_positioned){
+					if(TIM2->CNT <5000){encoder_actual_position=5000-TIM2->CNT;}
+					else{encoder_actual_position=10000-TIM2->CNT;}
+					modbus_registers_buffer[11]=encoder_actual_position;
+					int16_t corrected_encoder_position=((encoder_actual_position % 1000) - encoder_correction);
+					if(corrected_encoder_position<0){corrected_encoder_position+=1000;}
+					actual_electric_angle=(float)(corrected_encoder_position)*0.36f;
+					if(actual_electric_angle-electric_angle>180.0f){actual_torque_angle=(actual_electric_angle-electric_angle) - 360.0f;}
+					else if(actual_electric_angle-electric_angle<(-180.0f)){actual_torque_angle=actual_electric_angle-electric_angle + 360.0f;}
+					else{actual_torque_angle=actual_electric_angle-electric_angle;}
+					modbus_registers_buffer[12]=(int16_t)actual_torque_angle;//write calculated value to modbus array
+					speed_measurement_loop_i++;
+					if(speed_measurement_loop_i>=30){
+						speed=(actual_electric_angle-last_actual_electric_angle)*17.77777f; //speed(rpm) = ((x(deg)/polepairs)/360deg)/(0,001875(s)/60s)
+						if(speed>3200){speed-=6400;}if(speed<(-3200)){speed+=6400;}
+						filtered_speed=LowPassFilter(0.0005,speed, &last_filtered_actual_speed);
+						modbus_registers_buffer[13]=(int16_t)(filtered_speed);
+						last_actual_electric_angle = actual_electric_angle;
+						speed_measurement_loop_i=0;
+					}
+				}
+
+				park_transform(I_U, I_V, actual_electric_angle, &I_d, &I_q);
+				I_d_filtered = LowPassFilter(0.007, I_d, &I_d_last);
+				I_q_filtered = LowPassFilter(0.007, I_q, &I_q_last);
+				modbus_registers_buffer[15]=(int16_t)(I_d_filtered*100);
+				modbus_registers_buffer[16]=(int16_t)(I_q_filtered*100);
+
+				if(inv_control_mode==manual){
+					electric_angle+=(speed_setpoint_deg_s*POLE_PAIRS)/16000.0f;
+					if(electric_angle>=360.0f){	electric_angle=0.0f;}
+					if(electric_angle<0.0f){electric_angle=359.0f;}
+				}
+				if(inv_control_mode==foc && modbus_registers_buffer[3] ==1){
+					//U_d = PI_control(&id_current_controller_data, -I_d_filtered);
+					//U_q = PI_control(&iq_current_controller_data,(torque_setpoint/10.0f)-I_q_filtered);
+					inv_park_transform(U_d, U_q, actual_electric_angle, &U_alpha, &U_beta);
+					duty_cycle=sqrtf(U_alpha*U_alpha+U_beta*U_beta);
+
+					float electric_angle_rad=0.0f;
+					if(U_alpha>=0 && U_beta >=0){electric_angle_rad=atan2f(fabs(U_beta),fabs(U_alpha));}
+					if(U_alpha<0 && U_beta >=0){electric_angle_rad=atan2f(fabs(U_alpha),fabs(U_beta)) + (3.141592f/2.0f);}
+					if(U_alpha<0 && U_beta <0){electric_angle_rad=atan2f(fabs(U_beta),fabs(U_alpha)) + 3.141592f;}
+					if(U_alpha>=0 && U_beta <0){electric_angle_rad=atan2f(fabs(U_alpha),fabs(U_beta)) + (3.141592f*1.5f);}
+
+					electric_angle=(electric_angle_rad/3.141592f)*180.0f;
+
+					//electric_angle+=(speed_setpoint_deg_s*POLE_PAIRS)/16000.0f;
+					//if(electric_angle>=360.0f){	electric_angle=0.0f;}
+					//if(electric_angle<0.0f){electric_angle=359.0f;}
+				}
+
+				if(inv_control_mode!=stop){output_svpwm((uint16_t)electric_angle, (uint16_t)duty_cycle);}
+				else{TIM1->CCR1=0;TIM1->CCR2=0;TIM1->CCR3=0;}//if inverter in stop mode stop producing PWM signal while timer1 is still active to keep this interrupt alive for measurements on switched off inverter
+
+			}
   /* USER CODE END DMA2_Stream0_IRQn 0 */
   HAL_DMA_IRQHandler(&hdma_adc1);
   /* USER CODE BEGIN DMA2_Stream0_IRQn 1 */
@@ -313,5 +429,58 @@ void DMA2_Stream7_IRQHandler(void)
 }
 
 /* USER CODE BEGIN 1 */
-
+void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin){
+	if(GPIO_Pin==ENC_Z_Pin){
+		TIM2->CNT=5000;
+		encoder_positioned=1;
+	}
+}
+void output_svpwm(uint16_t angle,uint16_t max_duty_cycle){
+	uint8_t sector=(angle/60)+1;
+	float t1=0.0f;
+	float t2=0.0f;
+	float t0=0.0f;
+	if(sector%2==1){
+		t1=t1calculated[angle%60]*(float)max_duty_cycle;
+		t2=t2calculated[angle%60]*(float)max_duty_cycle;
+		t0=((float)max_duty_cycle-t1-t2)/2.0f;
+	}else{
+		t1=t1calculated[60-(angle%60)]*(float)max_duty_cycle;
+		t2=t2calculated[60-(angle%60)]*(float)max_duty_cycle;
+		t0=((float)max_duty_cycle-t1-t2)/2.0f;
+	}
+	switch(sector){
+	case 1:
+		TIM1->CCR1=(uint32_t)t0+(uint32_t)t1+(uint32_t)t2;
+		TIM1->CCR2=(uint32_t)t0+(uint32_t)t2;
+		TIM1->CCR3=(uint32_t)t0;
+		break;
+	case 2:
+		TIM1->CCR1=(uint32_t)t0+(uint32_t)t2;
+		TIM1->CCR2=(uint32_t)t0+(uint32_t)t1+(uint32_t)t2;
+		TIM1->CCR3=(uint32_t)t0;
+		break;
+	case 3:
+		TIM1->CCR1=(uint32_t)t0;
+		TIM1->CCR2=(uint32_t)t0+(uint32_t)t1+(uint32_t)t2;
+		TIM1->CCR3=(uint32_t)t0+(uint32_t)t2;
+		break;
+	case 4:
+		TIM1->CCR1=(uint32_t)t0;
+		TIM1->CCR2=(uint32_t)t0+(uint32_t)t2;
+		TIM1->CCR3=(uint32_t)t0+(uint32_t)t1+(uint32_t)t2;
+		break;
+	case 5:
+		TIM1->CCR1=(uint32_t)t0+(uint32_t)t2;
+		TIM1->CCR2=(uint32_t)t0;
+		TIM1->CCR3=(uint32_t)t0+(uint32_t)t1+(uint32_t)t2;
+		break;
+	case 6:
+		TIM1->CCR1=(uint32_t)t0+(uint32_t)t1+(uint32_t)t2;
+		TIM1->CCR2=(uint32_t)t0;
+		TIM1->CCR3=(uint32_t)t0+(uint32_t)t2;
+		break;
+	}
+	//HAL_GPIO_WritePin(GPIOB,GPIO_PIN_13,GPIO_PIN_RESET);
+}
 /* USER CODE END 1 */

@@ -84,6 +84,7 @@ uint16_t modbus_protocol_write(uint32_t la, uint16_t value)
 
 int mbus_send(const mbus_t context,const uint8_t* data, const uint16_t size){
 	UNUSED(context);
+	HAL_GPIO_WritePin(MODBUS_DE_GPIO_Port,MODBUS_DE_Pin, 1);
 	if(HAL_UART_Transmit_DMA( &huart1, (uint8_t*) data,size)==HAL_OK){
 		return MBUS_OK;
 	}else{return MBUS_ERROR;}
