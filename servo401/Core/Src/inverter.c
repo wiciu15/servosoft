@@ -8,6 +8,7 @@
 #include "main.h"
 #include "inverter.h"
 #include "comm_modbus.h"
+#include "lookuptables.h"
 #include <stdio.h>
 #include <math.h>
 
@@ -70,4 +71,94 @@ float LowPassFilter(float Tf,float actual_measurement, float * last_filtered_val
 	float filtered_value = (alpha*(*last_filtered_value)) + ((1.0f - alpha)*actual_measurement);
 	*last_filtered_value = filtered_value;
 	return filtered_value;
+}
+
+float get_sine_value(uint16_t angle){
+	float sine=0.0f;
+	uint8_t sector=angle/90;
+	switch (sector){
+	case 0:
+		sine=sine_table[angle];
+		break;
+	case 1:
+		sine=sine_table[90-(angle-90)];
+		break;
+	case 2:
+		sine=sine_table[angle-180]*(-1.0f);
+		break;
+	case 3:
+		sine=sine_table[90-(angle-270)]*(-1.0f);
+		break;
+	default:
+		sine=0;
+	}
+	return sine;
+}
+
+//this doesnt work
+void output_sine_pwm(uint16_t angle,uint16_t max_duty_cycle){
+	float sin_u = 0;
+	float sin_v = 0;
+	float sin_w = 0;
+	if(angle>=360){ //fault
+		TIM1->CCR1=0;
+		TIM1->CCR2=0;
+		TIM1->CCR3=0;
+	}else{
+		sin_u=get_sine_value(angle);
+		if(angle>=240){sin_v=get_sine_value((angle+120)-360);}else{sin_v=get_sine_value(angle+120);}
+		if(angle>=120){sin_w=get_sine_value((angle+240)-360);}else{sin_v=get_sine_value(angle+240);}
+		if(sin_u>0){TIM1->CCR1=sin_u*max_duty_cycle;}//else{TIM1->CCR1=max_duty_cycle-((-1.0f)*sin_u*max_duty_cycle);}
+		if(sin_v>0){TIM1->CCR2=sin_v*max_duty_cycle;}//else{TIM1->CCR2=max_duty_cycle-((-1.0f)*sin_v*max_duty_cycle);}
+		if(sin_w>0){TIM1->CCR3=sin_w*max_duty_cycle;}//else{TIM1->CCR3=max_duty_cycle-((-1.0f)*sin_w*max_duty_cycle);}
+	}
+}
+
+void output_svpwm(uint16_t angle,uint16_t max_duty_cycle){
+	uint8_t sector=(angle/60)+1;
+	float t1=0.0f;
+	float t2=0.0f;
+	float t0=0.0f;
+	if(sector%2==1){
+		t1=t1calculated[angle%60]*(float)max_duty_cycle;
+		t2=t2calculated[angle%60]*(float)max_duty_cycle;
+		t0=((float)DUTY_CYCLE_LIMIT-t1-t2)/2.0f;
+	}else{
+		t1=t1calculated[60-(angle%60)]*(float)max_duty_cycle;
+		t2=t2calculated[60-(angle%60)]*(float)max_duty_cycle;
+		t0=((float)DUTY_CYCLE_LIMIT-t1-t2)/2.0f;
+	}
+	switch(sector){
+	case 1:
+		TIM1->CCR1=(uint32_t)t0+(uint32_t)t1+(uint32_t)t2;
+		TIM1->CCR2=(uint32_t)t0+(uint32_t)t2;
+		TIM1->CCR3=(uint32_t)t0;
+		break;
+	case 2:
+		TIM1->CCR1=(uint32_t)t0+(uint32_t)t2;
+		TIM1->CCR2=(uint32_t)t0+(uint32_t)t1+(uint32_t)t2;
+		TIM1->CCR3=(uint32_t)t0;
+		break;
+	case 3:
+		TIM1->CCR1=(uint32_t)t0;
+		TIM1->CCR2=(uint32_t)t0+(uint32_t)t1+(uint32_t)t2;
+		TIM1->CCR3=(uint32_t)t0+(uint32_t)t2;
+		break;
+	case 4:
+		TIM1->CCR1=(uint32_t)t0;
+		TIM1->CCR2=(uint32_t)t0+(uint32_t)t2;
+		TIM1->CCR3=(uint32_t)t0+(uint32_t)t1+(uint32_t)t2;
+		break;
+	case 5:
+		TIM1->CCR1=(uint32_t)t0+(uint32_t)t2;
+		TIM1->CCR2=(uint32_t)t0;
+		TIM1->CCR3=(uint32_t)t0+(uint32_t)t1+(uint32_t)t2;
+		break;
+	case 6:
+		TIM1->CCR1=(uint32_t)t0+(uint32_t)t1+(uint32_t)t2;
+		TIM1->CCR2=(uint32_t)t0;
+		TIM1->CCR3=(uint32_t)t0+(uint32_t)t2;
+		break;
+	}
+	//HAL_GPIO_WritePin(GPIOB,GPIO_PIN_13,GPIO_PIN_RESET);
 }

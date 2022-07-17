@@ -11,8 +11,8 @@
 #define INVERTER_OVERCURRENT_TRIP_LEVEL 8.0f  //overcurrrent trip setting level in Amperes
 #define INVERTER_OVERVOLTAGE_LEVEL 19.0f
 #define INVERTER_UNDERVOLTAGE_LEVEL 13.0f
-#define DUTY_CYCLE_LIMIT 5249
-#define CURRENT_SENSE_RATIO 0.0132129f //multiply this number with number of adc samples measured from current sensor output 0.0119827@4.17A 0.012126 0.0132173@1.52a
+#define DUTY_CYCLE_LIMIT 4999
+#define CURRENT_SENSE_RATIO 0.0166023f //multiply this number with number of adc samples measured from current sensor output 0.0119827@4.17A 0.012126 0.0132173@1.52a
 #define POLE_PAIRS 5.0f
 #define CURRENT_RMS_SAMPLING_COUNT 500 //(2*pwm frequency)/this define=rms current sampling frequency, for 500 = 32 calculations per second
 
@@ -73,5 +73,8 @@ void inverter_error_trip(uint8_t error);
 void park_transform(float I_U,float I_V,float motor_angle,float * I_d,float * I_q);
 void inv_park_transform(float U_d,float U_q, float motor_angle, float * U_alpha, float * U_beta);
 float LowPassFilter(float Tf, float actual_measurement, float * last_filtered_value);
+float get_sine_value(uint16_t angle);
+void output_sine_pwm(uint16_t angle,uint16_t max_duty_cycle);
+void output_svpwm(uint16_t angle,uint16_t max_duty_cycle);
 
 #endif /* INC_INVERTER_H_ */

@@ -131,6 +131,7 @@ void output_svpwm(uint16_t angle,uint16_t max_duty_cycle);
 /* External variables --------------------------------------------------------*/
 extern DMA_HandleTypeDef hdma_adc1;
 extern TIM_HandleTypeDef htim1;
+extern TIM_HandleTypeDef htim3;
 extern DMA_HandleTypeDef hdma_usart1_rx;
 extern DMA_HandleTypeDef hdma_usart1_tx;
 extern UART_HandleTypeDef huart1;
@@ -264,12 +265,27 @@ void SysTick_Handler(void)
 void TIM1_UP_TIM10_IRQHandler(void)
 {
   /* USER CODE BEGIN TIM1_UP_TIM10_IRQn 0 */
-	HAL_ADC_Start_DMA(&hadc1, ADC_rawdata, 2);
+
   /* USER CODE END TIM1_UP_TIM10_IRQn 0 */
   HAL_TIM_IRQHandler(&htim1);
   /* USER CODE BEGIN TIM1_UP_TIM10_IRQn 1 */
 
   /* USER CODE END TIM1_UP_TIM10_IRQn 1 */
+}
+
+/**
+  * @brief This function handles TIM3 global interrupt.
+  */
+void TIM3_IRQHandler(void)
+{
+  /* USER CODE BEGIN TIM3_IRQn 0 */
+	HAL_ADC_Start_DMA(&hadc1, ADC_rawdata, 4);
+	HAL_GPIO_WritePin(DISP_LATCH_GPIO_Port, DISP_LATCH_Pin, 1);
+  /* USER CODE END TIM3_IRQn 0 */
+  HAL_TIM_IRQHandler(&htim3);
+  /* USER CODE BEGIN TIM3_IRQn 1 */
+
+  /* USER CODE END TIM3_IRQn 1 */
 }
 
 /**
@@ -292,6 +308,7 @@ void USART1_IRQHandler(void)
 void DMA2_Stream0_IRQHandler(void)
 {
   /* USER CODE BEGIN DMA2_Stream0_IRQn 0 */
+	HAL_GPIO_WritePin(DISP_LATCH_GPIO_Port, DISP_LATCH_Pin, 0);
 	if(zerocurrent_reading_loop_i<15){
 				I_U_zerocurrentreading+=ADC_rawdata[0];
 				I_V_zerocurrentreading+=ADC_rawdata[1];
@@ -304,7 +321,7 @@ void DMA2_Stream0_IRQHandler(void)
 					measurement_error_counter++;
 				}else{measurement_error_counter=0;}*/
 				//DC link voltage
-				U_DClink = (float)ADC_rawdata[2]*0.01006493f;
+				U_DClink = (float)ADC_rawdata[2]*0.0250945f;
 				U_DClink_filtered = LowPassFilter(0.01f, U_DClink, &U_DClink_last);
 
 				//if(U_DClink_filtered>INVERTER_OVERVOLTAGE_LEVEL && OV_measurement_error_counter<2){if(OV_measurement_error_counter==1){inverter_error_trip(overvoltage);}OV_measurement_error_counter++;}else{OV_measurement_error_counter=0;}
@@ -366,7 +383,7 @@ void DMA2_Stream0_IRQHandler(void)
 				modbus_registers_buffer[16]=(int16_t)(I_q_filtered*100);
 
 				if(inv_control_mode==manual){
-					electric_angle+=(speed_setpoint_deg_s*POLE_PAIRS)/16000.0f;
+					electric_angle+=(speed_setpoint_deg_s*POLE_PAIRS)/10000.0f;  //10000hz control/sampling loop
 					if(electric_angle>=360.0f){	electric_angle=0.0f;}
 					if(electric_angle<0.0f){electric_angle=359.0f;}
 				}
@@ -389,7 +406,10 @@ void DMA2_Stream0_IRQHandler(void)
 					//if(electric_angle<0.0f){electric_angle=359.0f;}
 				}
 
-				if(inv_control_mode!=stop){output_svpwm((uint16_t)electric_angle, (uint16_t)duty_cycle);}
+				if(inv_control_mode!=stop){
+					output_svpwm((uint16_t)electric_angle, (uint16_t)duty_cycle);
+					//output_sine_pwm((uint16_t)electric_angle, (uint16_t)duty_cycle);
+				}
 				else{TIM1->CCR1=0;TIM1->CCR2=0;TIM1->CCR3=0;}//if inverter in stop mode stop producing PWM signal while timer1 is still active to keep this interrupt alive for measurements on switched off inverter
 
 			}
@@ -434,53 +454,5 @@ void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin){
 		TIM2->CNT=5000;
 		encoder_positioned=1;
 	}
-}
-void output_svpwm(uint16_t angle,uint16_t max_duty_cycle){
-	uint8_t sector=(angle/60)+1;
-	float t1=0.0f;
-	float t2=0.0f;
-	float t0=0.0f;
-	if(sector%2==1){
-		t1=t1calculated[angle%60]*(float)max_duty_cycle;
-		t2=t2calculated[angle%60]*(float)max_duty_cycle;
-		t0=((float)max_duty_cycle-t1-t2)/2.0f;
-	}else{
-		t1=t1calculated[60-(angle%60)]*(float)max_duty_cycle;
-		t2=t2calculated[60-(angle%60)]*(float)max_duty_cycle;
-		t0=((float)max_duty_cycle-t1-t2)/2.0f;
-	}
-	switch(sector){
-	case 1:
-		TIM1->CCR1=(uint32_t)t0+(uint32_t)t1+(uint32_t)t2;
-		TIM1->CCR2=(uint32_t)t0+(uint32_t)t2;
-		TIM1->CCR3=(uint32_t)t0;
-		break;
-	case 2:
-		TIM1->CCR1=(uint32_t)t0+(uint32_t)t2;
-		TIM1->CCR2=(uint32_t)t0+(uint32_t)t1+(uint32_t)t2;
-		TIM1->CCR3=(uint32_t)t0;
-		break;
-	case 3:
-		TIM1->CCR1=(uint32_t)t0;
-		TIM1->CCR2=(uint32_t)t0+(uint32_t)t1+(uint32_t)t2;
-		TIM1->CCR3=(uint32_t)t0+(uint32_t)t2;
-		break;
-	case 4:
-		TIM1->CCR1=(uint32_t)t0;
-		TIM1->CCR2=(uint32_t)t0+(uint32_t)t2;
-		TIM1->CCR3=(uint32_t)t0+(uint32_t)t1+(uint32_t)t2;
-		break;
-	case 5:
-		TIM1->CCR1=(uint32_t)t0+(uint32_t)t2;
-		TIM1->CCR2=(uint32_t)t0;
-		TIM1->CCR3=(uint32_t)t0+(uint32_t)t1+(uint32_t)t2;
-		break;
-	case 6:
-		TIM1->CCR1=(uint32_t)t0+(uint32_t)t1+(uint32_t)t2;
-		TIM1->CCR2=(uint32_t)t0;
-		TIM1->CCR3=(uint32_t)t0+(uint32_t)t2;
-		break;
-	}
-	//HAL_GPIO_WritePin(GPIOB,GPIO_PIN_13,GPIO_PIN_RESET);
 }
 /* USER CODE END 1 */
