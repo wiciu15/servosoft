@@ -27,8 +27,10 @@
 #include "comm_modbus.h"
 #include <math.h>
 #include "modbus.h"
+#include "pid.h"
 #include "inverter.h"
 #include "lookuptables.h"
+#include "mitsubishi_encoder.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -50,13 +52,13 @@
 /* USER CODE BEGIN PV */
 volatile uint16_t ADC_rawdata[4];
 
-/*volatile PID_t id_current_controller_data = {
-		1000.0f,0.0f,DUTY_CYCLE_LIMIT,DUTY_CYCLE_LIMIT,6.25E-05f,0.0f,0.0f,0.0f,0.0f
+volatile PID_t id_current_controller_data = {
+		1000.0f,0.0f,DUTY_CYCLE_LIMIT,DUTY_CYCLE_LIMIT,2E-04f,0.0f,0.0f,0.0f,0.0f
 };
 volatile PID_t iq_current_controller_data = {
-		6000.0f,5.0f,DUTY_CYCLE_LIMIT,DUTY_CYCLE_LIMIT,6.25E-05f,0.0f,0.0f,0.0f,0.0f
+		6000.0f,5.0f,DUTY_CYCLE_LIMIT,DUTY_CYCLE_LIMIT,2E-04f,0.0f,0.0f,0.0f,0.0f
 };
-*/
+
 volatile enum inverter_control_mode_t inv_control_mode = stop;
 volatile float speed_setpoint_deg_s=0.0f; //speed in degrees/s
 float motor_angle=0.0f;
@@ -111,6 +113,7 @@ int16_t encoder_actual_position=0;
 float actual_electric_angle=0.0f;
 float last_actual_electric_angle=0.0f;
 float actual_torque_angle=0.0f;
+motor_feedback_type_t motor_feedback_type=ssi_encoder;
 
 float speed_measurement_loop_i=0;
 float speed=0.0f;
@@ -134,7 +137,10 @@ extern TIM_HandleTypeDef htim1;
 extern TIM_HandleTypeDef htim3;
 extern DMA_HandleTypeDef hdma_usart1_rx;
 extern DMA_HandleTypeDef hdma_usart1_tx;
+extern DMA_HandleTypeDef hdma_usart2_rx;
+extern DMA_HandleTypeDef hdma_usart2_tx;
 extern UART_HandleTypeDef huart1;
+extern UART_HandleTypeDef huart2;
 /* USER CODE BEGIN EV */
 extern ADC_HandleTypeDef hadc1;
 /* USER CODE END EV */
@@ -260,6 +266,34 @@ void SysTick_Handler(void)
 /******************************************************************************/
 
 /**
+  * @brief This function handles DMA1 stream5 global interrupt.
+  */
+void DMA1_Stream5_IRQHandler(void)
+{
+  /* USER CODE BEGIN DMA1_Stream5_IRQn 0 */
+
+  /* USER CODE END DMA1_Stream5_IRQn 0 */
+  HAL_DMA_IRQHandler(&hdma_usart2_rx);
+  /* USER CODE BEGIN DMA1_Stream5_IRQn 1 */
+
+  /* USER CODE END DMA1_Stream5_IRQn 1 */
+}
+
+/**
+  * @brief This function handles DMA1 stream6 global interrupt.
+  */
+void DMA1_Stream6_IRQHandler(void)
+{
+  /* USER CODE BEGIN DMA1_Stream6_IRQn 0 */
+
+  /* USER CODE END DMA1_Stream6_IRQn 0 */
+  HAL_DMA_IRQHandler(&hdma_usart2_tx);
+  /* USER CODE BEGIN DMA1_Stream6_IRQn 1 */
+
+  /* USER CODE END DMA1_Stream6_IRQn 1 */
+}
+
+/**
   * @brief This function handles TIM1 update interrupt and TIM10 global interrupt.
   */
 void TIM1_UP_TIM10_IRQHandler(void)
@@ -280,7 +314,9 @@ void TIM3_IRQHandler(void)
 {
   /* USER CODE BEGIN TIM3_IRQn 0 */
 	HAL_ADC_Start_DMA(&hadc1, ADC_rawdata, 4);
+	motor_encoder_read_position();
 	HAL_GPIO_WritePin(DISP_LATCH_GPIO_Port, DISP_LATCH_Pin, 1);
+
   /* USER CODE END TIM3_IRQn 0 */
   HAL_TIM_IRQHandler(&htim3);
   /* USER CODE BEGIN TIM3_IRQn 1 */
@@ -303,6 +339,20 @@ void USART1_IRQHandler(void)
 }
 
 /**
+  * @brief This function handles USART2 global interrupt.
+  */
+void USART2_IRQHandler(void)
+{
+  /* USER CODE BEGIN USART2_IRQn 0 */
+
+  /* USER CODE END USART2_IRQn 0 */
+  HAL_UART_IRQHandler(&huart2);
+  /* USER CODE BEGIN USART2_IRQn 1 */
+
+  /* USER CODE END USART2_IRQn 1 */
+}
+
+/**
   * @brief This function handles DMA2 stream0 global interrupt.
   */
 void DMA2_Stream0_IRQHandler(void)
@@ -316,16 +366,16 @@ void DMA2_Stream0_IRQHandler(void)
 				zerocurrent_reading_loop_i++;
 			}else{
 
-				/*if(ADC_rawdata[0]<40 || ADC_rawdata[1]<40 ||ADC_rawdata[0]>4000 || ADC_rawdata[1]>4000){
+				if(ADC_rawdata[0]<40 || ADC_rawdata[1]<40 ||ADC_rawdata[0]>4000 || ADC_rawdata[1]>4000){
 					if(measurement_error_counter==1)inverter_error_trip(shortcircuit);
 					measurement_error_counter++;
-				}else{measurement_error_counter=0;}*/
+				}else{measurement_error_counter=0;}
 				//DC link voltage
 				U_DClink = (float)ADC_rawdata[2]*0.0250945f;
 				U_DClink_filtered = LowPassFilter(0.01f, U_DClink, &U_DClink_last);
 
-				//if(U_DClink_filtered>INVERTER_OVERVOLTAGE_LEVEL && OV_measurement_error_counter<2){if(OV_measurement_error_counter==1){inverter_error_trip(overvoltage);}OV_measurement_error_counter++;}else{OV_measurement_error_counter=0;}
-				//if(U_DClink_filtered<INVERTER_UNDERVOLTAGE_LEVEL && UV_measurement_error_counter<2){if(UV_measurement_error_counter==1){inverter_error_trip(undervoltage);}UV_measurement_error_counter++;}else{UV_measurement_error_counter=0;} //2 measurements under a treshold must happen in a row
+				if(U_DClink_filtered>INVERTER_OVERVOLTAGE_LEVEL && OV_measurement_error_counter<2){if(OV_measurement_error_counter==1){inverter_error_trip(overvoltage);}OV_measurement_error_counter++;}else{OV_measurement_error_counter=0;}
+				if(U_DClink_filtered<INVERTER_UNDERVOLTAGE_LEVEL && UV_measurement_error_counter<2){if(UV_measurement_error_counter==1){inverter_error_trip(undervoltage);}UV_measurement_error_counter++;}else{UV_measurement_error_counter=0;} //2 measurements under a treshold must happen in a row
 				modbus_registers_buffer[14] = (uint16_t)(U_DClink_filtered*10.0f);
 				//current calculation
 				I_U_raw=ADC_rawdata[0]-I_U_zerocurrentreading;
@@ -353,27 +403,53 @@ void DMA2_Stream0_IRQHandler(void)
 					if(OC_measurement_error_counter==2){inverter_error_trip(overcurrent);}
 				}else{OC_measurement_error_counter=0;}
 
-
-				if(encoder_positioned){
-					if(TIM2->CNT <5000){encoder_actual_position=5000-TIM2->CNT;}
-					else{encoder_actual_position=10000-TIM2->CNT;}
-					modbus_registers_buffer[11]=encoder_actual_position;
-					int16_t corrected_encoder_position=((encoder_actual_position % 1000) - encoder_correction);
-					if(corrected_encoder_position<0){corrected_encoder_position+=1000;}
-					actual_electric_angle=(float)(corrected_encoder_position)*0.36f;
+				if(motor_feedback_type==abz_encoder){
+					if(encoder_positioned){
+						if(TIM2->CNT <5000){encoder_actual_position=5000-TIM2->CNT;}
+						else{encoder_actual_position=10000-TIM2->CNT;}
+						modbus_registers_buffer[11]=encoder_actual_position;
+						int16_t corrected_encoder_position=((encoder_actual_position % 1000) - encoder_correction);
+						if(corrected_encoder_position<0){corrected_encoder_position+=1000;}
+						actual_electric_angle=(float)(corrected_encoder_position)*0.36f;
+						if(actual_electric_angle-electric_angle>180.0f){actual_torque_angle=(actual_electric_angle-electric_angle) - 360.0f;}
+						else if(actual_electric_angle-electric_angle<(-180.0f)){actual_torque_angle=actual_electric_angle-electric_angle + 360.0f;}
+						else{actual_torque_angle=actual_electric_angle-electric_angle;}
+						modbus_registers_buffer[12]=(int16_t)actual_torque_angle;//write calculated value to modbus array
+						speed_measurement_loop_i++;
+						if(speed_measurement_loop_i>=30){
+							speed=(actual_electric_angle-last_actual_electric_angle)*17.77777f; //speed(rpm) = ((x(deg)/polepairs)/360deg)/(0,001875(s)/60s)
+							if(speed>3200){speed-=6400;}if(speed<(-3200)){speed+=6400;}
+							filtered_speed=LowPassFilter(0.0005,speed, &last_filtered_actual_speed);
+							modbus_registers_buffer[13]=(int16_t)(filtered_speed);
+							last_actual_electric_angle = actual_electric_angle;
+							speed_measurement_loop_i=0;
+						}
+					}
+				}
+				if(motor_feedback_type==ssi_encoder){
+					modbus_registers_buffer[11]=ssi_encoder_data.encoder_position;
+					if(ssi_encoder_data.encoder_resolution==p8192ppr){actual_electric_angle=((fmodf(ssi_encoder_data.encoder_position, 8192.0f/POLE_PAIRS))/(8192.0f/POLE_PAIRS))*360.0f;}
+					if(ssi_encoder_data.encoder_resolution==p131072ppr){actual_electric_angle=((fmodf(ssi_encoder_data.encoder_position,8192.0f/POLE_PAIRS))/(131072.0f/POLE_PAIRS))*360.0f;}
+					if(ssi_encoder_data.encoder_resolution==unknown_resolution){actual_electric_angle=0;}//@TODO encoder error trip
 					if(actual_electric_angle-electric_angle>180.0f){actual_torque_angle=(actual_electric_angle-electric_angle) - 360.0f;}
 					else if(actual_electric_angle-electric_angle<(-180.0f)){actual_torque_angle=actual_electric_angle-electric_angle + 360.0f;}
 					else{actual_torque_angle=actual_electric_angle-electric_angle;}
 					modbus_registers_buffer[12]=(int16_t)actual_torque_angle;//write calculated value to modbus array
 					speed_measurement_loop_i++;
 					if(speed_measurement_loop_i>=30){
-						speed=(actual_electric_angle-last_actual_electric_angle)*17.77777f; //speed(rpm) = ((x(deg)/polepairs)/360deg)/(0,001875(s)/60s)
-						if(speed>3200){speed-=6400;}if(speed<(-3200)){speed+=6400;}
-						filtered_speed=LowPassFilter(0.0005,speed, &last_filtered_actual_speed);
-						modbus_registers_buffer[13]=(int16_t)(filtered_speed);
-						last_actual_electric_angle = actual_electric_angle;
+						if(ssi_encoder_data.encoder_resolution==p8192ppr){
+							//speed(rpm)=(position pulse delta/enc resolution)*(60s/sample time(s))
+							//speed=(delta/8192)*(60/0,003)
+							speed=((float)ssi_encoder_data.encoder_position-(float)ssi_encoder_data.last_encoder_position_speed_loop)*1.2207f;
+							if(speed>5000.0f){speed-=10000.0f;}if(speed<-5000.0f){speed+=10000.0f;}
+						}
+						//@TODO: add speed measurement for 19bit encoders
+						ssi_encoder_data.last_encoder_position_speed_loop=ssi_encoder_data.encoder_position;
 						speed_measurement_loop_i=0;
 					}
+					filtered_speed=LowPassFilter(0.0005,speed, &last_filtered_actual_speed);
+					modbus_registers_buffer[13]=(int16_t)(speed);
+
 				}
 
 				park_transform(I_U, I_V, actual_electric_angle, &I_d, &I_q);
@@ -383,13 +459,13 @@ void DMA2_Stream0_IRQHandler(void)
 				modbus_registers_buffer[16]=(int16_t)(I_q_filtered*100);
 
 				if(inv_control_mode==manual){
-					electric_angle+=(speed_setpoint_deg_s*POLE_PAIRS)/10000.0f;  //10000hz control/sampling loop
+					electric_angle+=(speed_setpoint_deg_s*POLE_PAIRS)/5000.0f;  //5000hz control/sampling loop
 					if(electric_angle>=360.0f){	electric_angle=0.0f;}
 					if(electric_angle<0.0f){electric_angle=359.0f;}
 				}
 				if(inv_control_mode==foc && modbus_registers_buffer[3] ==1){
-					//U_d = PI_control(&id_current_controller_data, -I_d_filtered);
-					//U_q = PI_control(&iq_current_controller_data,(torque_setpoint/10.0f)-I_q_filtered);
+					U_d = PI_control(&id_current_controller_data, -I_d_filtered);
+					U_q = PI_control(&iq_current_controller_data,(torque_setpoint/10.0f)-I_q_filtered);
 					inv_park_transform(U_d, U_q, actual_electric_angle, &U_alpha, &U_beta);
 					duty_cycle=sqrtf(U_alpha*U_alpha+U_beta*U_beta);
 

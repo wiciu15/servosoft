@@ -2,6 +2,8 @@
 "./Core/Src/freertos.o"
 "./Core/Src/inverter.o"
 "./Core/Src/main.o"
+"./Core/Src/mitsubishi_encoder.o"
+"./Core/Src/pid.o"
 "./Core/Src/stm32f4xx_hal_msp.o"
 "./Core/Src/stm32f4xx_it.o"
 "./Core/Src/syscalls.o"

@@ -74,7 +74,12 @@ uint16_t modbus_protocol_write(uint32_t la, uint16_t value)
 			}
 		}
 
-		break;}
+		break;
+	case 8:
+		if(value<=2){
+			motor_feedback_type=value;
+		modbus_registers_buffer[8]=motor_feedback_type;}
+		}
 	default:
 		//if not handled inside switch, then read-only parameter
 		break;

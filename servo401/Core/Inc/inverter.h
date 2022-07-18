@@ -9,11 +9,11 @@
 #define INC_INVERTER_H_
 
 #define INVERTER_OVERCURRENT_TRIP_LEVEL 8.0f  //overcurrrent trip setting level in Amperes
-#define INVERTER_OVERVOLTAGE_LEVEL 19.0f
-#define INVERTER_UNDERVOLTAGE_LEVEL 13.0f
+#define INVERTER_OVERVOLTAGE_LEVEL 35.0f
+#define INVERTER_UNDERVOLTAGE_LEVEL 20.0f
 #define DUTY_CYCLE_LIMIT 4999
 #define CURRENT_SENSE_RATIO 0.0166023f //multiply this number with number of adc samples measured from current sensor output 0.0119827@4.17A 0.012126 0.0132173@1.52a
-#define POLE_PAIRS 5.0f
+#define POLE_PAIRS 4.0f
 #define CURRENT_RMS_SAMPLING_COUNT 500 //(2*pwm frequency)/this define=rms current sampling frequency, for 500 = 32 calculations per second
 
 typedef enum {no_error,undervoltage,overvoltage,shortcircuit,overcurrent,encoder_error,internal_hardfault}inverter_error_t;
@@ -61,6 +61,8 @@ extern int16_t encoder_actual_position;
 extern float actual_electric_angle;
 extern float last_actual_electric_angle;
 extern float actual_torque_angle;
+typedef enum {no_feedback,abz_encoder,ssi_encoder} motor_feedback_type_t;
+extern motor_feedback_type_t motor_feedback_type;
 
 extern float speed_measurement_loop_i;
 extern float speed;

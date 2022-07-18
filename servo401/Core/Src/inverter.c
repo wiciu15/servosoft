@@ -25,6 +25,7 @@ void inverter_enable(){
 		TIM1->CCR3=0;
 		HAL_GPIO_WritePin(INV_ENABLE_GPIO_Port, INV_ENABLE_Pin, GPIO_PIN_RESET);
 		HAL_GPIO_WritePin(INV_ENABLE_GPIO_Port, INV_ENABLE_Pin, GPIO_PIN_SET);
+		HAL_GPIO_WritePin(SOFTSTART_GPIO_Port, SOFTSTART_Pin, 1);
 		HAL_TIM_PWM_Start(&htim1,TIM_CHANNEL_1);
 		HAL_TIM_PWM_Start(&htim1,TIM_CHANNEL_2);
 		HAL_TIM_PWM_Start(&htim1,TIM_CHANNEL_3);
@@ -37,6 +38,7 @@ void inverter_disable(){
 	//TIM1->CCR1=0;TIM1->CCR2=0;TIM1->CCR3=0;
 	HAL_GPIO_WritePin(INV_DISABLE_GPIO_Port, INV_DISABLE_Pin, GPIO_PIN_RESET);
 	HAL_GPIO_WritePin(INV_DISABLE_GPIO_Port, INV_DISABLE_Pin, GPIO_PIN_SET);
+	HAL_GPIO_WritePin(SOFTSTART_GPIO_Port, SOFTSTART_Pin, 0);
 	HAL_TIM_PWM_Stop(&htim1,TIM_CHANNEL_1);
 	HAL_TIM_PWM_Stop(&htim1,TIM_CHANNEL_2);
 	HAL_TIM_PWM_Stop(&htim1,TIM_CHANNEL_3);
@@ -67,7 +69,7 @@ void inv_park_transform(float U_d,float U_q, float motor_angle, float * U_alpha,
 
 //Tf - filter time constant in seconds
 float LowPassFilter(float Tf,float actual_measurement, float * last_filtered_value){
-	float alpha = Tf/(Tf + 0.0000625f); //0.0000625 = 1/16kHz - pwm interrupt frequency and sampling
+	float alpha = Tf/(Tf + 0.0002f); //0.0002 = 1/5kHz - pwm interrupt frequency and sampling
 	float filtered_value = (alpha*(*last_filtered_value)) + ((1.0f - alpha)*actual_measurement);
 	*last_filtered_value = filtered_value;
 	return filtered_value;
