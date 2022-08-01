@@ -59,8 +59,13 @@ volatile PID_t iq_current_controller_data = {
 		6000.0f,5.0f,DUTY_CYCLE_LIMIT,DUTY_CYCLE_LIMIT,2E-04f,0.0f,0.0f,0.0f,0.0f
 };
 
+volatile PID_t speed_controller_data = {
+		0.05f,0.1f,10.0f,10.0f,0.0016f,0.0f,0.0f,0.0f,0.0f
+};
+
 volatile enum inverter_control_mode_t inv_control_mode = stop;
 volatile float speed_setpoint_deg_s=0.0f; //speed in degrees/s
+volatile int16_t speed_setpoint_rpm=0;
 float motor_angle=0.0f;
 float electric_angle=0.0f;
 volatile float duty_cycle=0.0f;
@@ -135,6 +140,7 @@ void output_svpwm(uint16_t angle,uint16_t max_duty_cycle);
 extern DMA_HandleTypeDef hdma_adc1;
 extern TIM_HandleTypeDef htim1;
 extern TIM_HandleTypeDef htim3;
+extern TIM_HandleTypeDef htim4;
 extern DMA_HandleTypeDef hdma_usart1_rx;
 extern DMA_HandleTypeDef hdma_usart1_tx;
 extern DMA_HandleTypeDef hdma_usart2_rx;
@@ -325,6 +331,22 @@ void TIM3_IRQHandler(void)
 }
 
 /**
+  * @brief This function handles TIM4 global interrupt.
+  */
+void TIM4_IRQHandler(void)
+{
+  /* USER CODE BEGIN TIM4_IRQn 0 */
+if(speed_setpoint_rpm!=0){
+	torque_setpoint = PI_control(&speed_controller_data, speed_setpoint_rpm-filtered_speed);
+}
+  /* USER CODE END TIM4_IRQn 0 */
+  HAL_TIM_IRQHandler(&htim4);
+  /* USER CODE BEGIN TIM4_IRQn 1 */
+
+  /* USER CODE END TIM4_IRQn 1 */
+}
+
+/**
   * @brief This function handles USART1 global interrupt.
   */
 void USART1_IRQHandler(void)
@@ -419,7 +441,6 @@ void DMA2_Stream0_IRQHandler(void)
 						if(speed_measurement_loop_i>=30){
 							speed=(actual_electric_angle-last_actual_electric_angle)*17.77777f; //speed(rpm) = ((x(deg)/polepairs)/360deg)/(0,001875(s)/60s)
 							if(speed>3200){speed-=6400;}if(speed<(-3200)){speed+=6400;}
-							filtered_speed=LowPassFilter(0.0005,speed, &last_filtered_actual_speed);
 							modbus_registers_buffer[13]=(int16_t)(filtered_speed);
 							last_actual_electric_angle = actual_electric_angle;
 							speed_measurement_loop_i=0;
@@ -447,7 +468,7 @@ void DMA2_Stream0_IRQHandler(void)
 						ssi_encoder_data.last_encoder_position_speed_loop=ssi_encoder_data.encoder_position;
 						speed_measurement_loop_i=0;
 					}
-					filtered_speed=LowPassFilter(0.0005,speed, &last_filtered_actual_speed);
+					filtered_speed=LowPassFilter(0.01,speed, &last_filtered_actual_speed);
 					modbus_registers_buffer[13]=(int16_t)(speed);
 
 				}
@@ -483,8 +504,8 @@ void DMA2_Stream0_IRQHandler(void)
 				}
 
 				if(inv_control_mode!=stop){
-					output_svpwm((uint16_t)electric_angle, (uint16_t)duty_cycle);
-					//output_sine_pwm((uint16_t)electric_angle, (uint16_t)duty_cycle);
+					//output_svpwm((uint16_t)electric_angle, (uint16_t)duty_cycle);
+					output_sine_pwm((uint16_t)electric_angle, (uint16_t)duty_cycle);
 				}
 				else{TIM1->CCR1=0;TIM1->CCR2=0;TIM1->CCR3=0;}//if inverter in stop mode stop producing PWM signal while timer1 is still active to keep this interrupt alive for measurements on switched off inverter
 

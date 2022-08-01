@@ -77,6 +77,7 @@ float LowPassFilter(float Tf,float actual_measurement, float * last_filtered_val
 
 float get_sine_value(uint16_t angle){
 	float sine=0.0f;
+	if(angle>=360){angle-=360;}
 	uint8_t sector=angle/90;
 	switch (sector){
 	case 0:
@@ -108,11 +109,11 @@ void output_sine_pwm(uint16_t angle,uint16_t max_duty_cycle){
 		TIM1->CCR3=0;
 	}else{
 		sin_u=get_sine_value(angle);
-		if(angle>=240){sin_v=get_sine_value((angle+120)-360);}else{sin_v=get_sine_value(angle+120);}
-		if(angle>=120){sin_w=get_sine_value((angle+240)-360);}else{sin_v=get_sine_value(angle+240);}
-		if(sin_u>0){TIM1->CCR1=sin_u*max_duty_cycle;}//else{TIM1->CCR1=max_duty_cycle-((-1.0f)*sin_u*max_duty_cycle);}
-		if(sin_v>0){TIM1->CCR2=sin_v*max_duty_cycle;}//else{TIM1->CCR2=max_duty_cycle-((-1.0f)*sin_v*max_duty_cycle);}
-		if(sin_w>0){TIM1->CCR3=sin_w*max_duty_cycle;}//else{TIM1->CCR3=max_duty_cycle-((-1.0f)*sin_w*max_duty_cycle);}
+		sin_v=get_sine_value(angle+240);
+		sin_w=get_sine_value(angle+120);
+		TIM1->CCR1=(DUTY_CYCLE_LIMIT/2.0f)+sin_u*(max_duty_cycle/2.0f);
+		TIM1->CCR2=(DUTY_CYCLE_LIMIT/2.0f)+sin_v*(max_duty_cycle/2.0f);
+		TIM1->CCR3=(DUTY_CYCLE_LIMIT/2.0f)+sin_w*(max_duty_cycle/2.0f);
 	}
 }
 

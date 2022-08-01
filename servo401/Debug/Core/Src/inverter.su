@@ -5,5 +5,5 @@
 ../Core/Src/inverter.c:64:6:inv_park_transform	48	static
 ../Core/Src/inverter.c:71:7:LowPassFilter	32	static
 ../Core/Src/inverter.c:78:7:get_sine_value	24	static
-../Core/Src/inverter.c:101:6:output_sine_pwm	32	static
-../Core/Src/inverter.c:119:6:output_svpwm	32	static
+../Core/Src/inverter.c:102:6:output_sine_pwm	32	static
+../Core/Src/inverter.c:120:6:output_svpwm	32	static

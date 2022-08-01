@@ -22,6 +22,7 @@ enum inverter_control_mode_t {stop,manual,foc};
 extern volatile inverter_error_t inverter_error;
 extern volatile enum inverter_control_mode_t inv_control_mode;
 extern volatile float speed_setpoint_deg_s; //speed in degrees/s
+extern volatile int16_t speed_setpoint_rpm;
 extern float motor_angle;
 extern float electric_angle;
 extern volatile float duty_cycle;

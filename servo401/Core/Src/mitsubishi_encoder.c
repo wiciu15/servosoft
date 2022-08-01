@@ -53,6 +53,7 @@ void motor_encoder_read_position(void){
 		if(ssi_encoder_data.encoder_resolution==p131072ppr){
 			ssi_encoder_data.last_encoder_position=ssi_encoder_data.encoder_position;
 			if(UART2_RX_raw[0]==0xA2){ssi_encoder_data.encoder_position=UART2_RX_raw[2]>>3 | UART2_RX_raw[3]<<5 | UART2_RX_raw[4]<<13;}
+			if(ssi_encoder_data.encoder_position>131073){ssi_encoder_data.encoder_position=ssi_encoder_data.last_encoder_position;}//error handling
 			int32_t speed = ssi_encoder_data.last_encoder_position-ssi_encoder_data.encoder_position;
 			if(((speed>2000) && (speed<129000))||
 					((speed<(-2000)) && (speed>(-129000)))){
@@ -63,6 +64,7 @@ void motor_encoder_read_position(void){
 		if(ssi_encoder_data.encoder_resolution==p8192ppr){
 			ssi_encoder_data.last_encoder_position=ssi_encoder_data.encoder_position;
 			if(UART2_RX_raw[0]==0x1A){ssi_encoder_data.encoder_position=UART2_RX_raw[2] | UART2_RX_raw[3]<<8;}
+			if(ssi_encoder_data.encoder_position>8193){ssi_encoder_data.encoder_position=ssi_encoder_data.last_encoder_position;}//error handling
 			int32_t speed = ssi_encoder_data.last_encoder_position-ssi_encoder_data.encoder_position;
 			if(((speed>50) && (speed<8100))||
 					((speed<(-50)) && (speed>(-8100)))){

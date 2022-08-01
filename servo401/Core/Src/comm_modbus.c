@@ -51,16 +51,22 @@ uint16_t modbus_protocol_write(uint32_t la, uint16_t value)
 			inverter_disable();break;
 		}
 		break;
-	case 5: //operation mode register
-		if(value<=2){inv_control_mode=value;
-		modbus_registers_buffer[5]=inv_control_mode;}
-		break;
-	case 6: //speed setpoint in rpm
+		case 5: //operation mode register
+			if(value<=2){inv_control_mode=value;
+			modbus_registers_buffer[5]=inv_control_mode;}
+			break;
+		case 6: //speed setpoint in rpm
 		{int16_t received_speed=value;
-		if((received_speed)<=1000 && (received_speed)>=(-1000) ){speed_setpoint_deg_s = (float)received_speed*6.0f;}
-		modbus_registers_buffer[6]=(uint16_t)speed_setpoint_deg_s;
+		if(inv_control_mode==manual){
+			if((received_speed)<=1000 && (received_speed)>=(-1000) ){speed_setpoint_deg_s = (float)received_speed*6.0f;}
+			modbus_registers_buffer[6]=(uint16_t)received_speed;
+		}
+		if(inv_control_mode==foc){
+			if((received_speed)<=1000 && (received_speed)>=(-1000) ){speed_setpoint_rpm = received_speed;}
+			modbus_registers_buffer[6]=(uint16_t)received_speed;
+		}
 		break;}
-	case 7: //set output voltage in manual/torque in foc
+		case 7: //set output voltage in manual/torque in foc
 		{if(inv_control_mode==manual){
 			uint8_t received_duty_cycle_percent=value;
 			if(value<=100 && value>=0){duty_cycle = ((float)received_duty_cycle_percent/100.0f)*(float)duty_cycle_limit;}
@@ -69,8 +75,8 @@ uint16_t modbus_protocol_write(uint32_t la, uint16_t value)
 		if(inv_control_mode==foc){
 			int8_t received_torque_setpoint = (int16_t)value;
 			if(received_torque_setpoint>=-100 && received_torque_setpoint<=100){
-			torque_setpoint=received_torque_setpoint;
-			modbus_registers_buffer[7]=(int16_t)torque_setpoint;
+				torque_setpoint=received_torque_setpoint;
+				modbus_registers_buffer[7]=(int16_t)torque_setpoint;
 			}
 		}
 
