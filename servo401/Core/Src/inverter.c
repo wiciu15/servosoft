@@ -56,8 +56,8 @@ void park_transform(float I_U,float I_V,float motor_angle,float * I_d,float * I_
 	float Ialfa=I_U;
 	float Ibeta=(0.5773502f * I_U) + (1.1547005f * I_V);
 	float motor_angle_rad = (motor_angle/180.0f)*3.141592f;
-	*I_d = (Ialfa * cosf(motor_angle_rad)) + (Ibeta * sinf(motor_angle_rad));
-	*I_q = (Ialfa * sinf(motor_angle_rad)*(-1)) + (Ibeta * cosf(motor_angle_rad));
+	*I_q = (Ialfa * cosf(motor_angle_rad)) + (Ibeta * sinf(motor_angle_rad));
+	*I_d = (Ialfa * sinf(motor_angle_rad)*(-1)) + (Ibeta * cosf(motor_angle_rad));
 }
 
 
@@ -78,6 +78,7 @@ float LowPassFilter(float Tf,float actual_measurement, float * last_filtered_val
 float get_sine_value(uint16_t angle){
 	float sine=0.0f;
 	if(angle>=360){angle-=360;}
+	if(angle<0){angle+=360;}
 	uint8_t sector=angle/90;
 	switch (sector){
 	case 0:
@@ -109,8 +110,8 @@ void output_sine_pwm(uint16_t angle,uint16_t max_duty_cycle){
 		TIM1->CCR3=0;
 	}else{
 		sin_u=get_sine_value(angle);
-		sin_v=get_sine_value(angle+240);
-		sin_w=get_sine_value(angle+120);
+		sin_v=get_sine_value(angle+120);
+		sin_w=get_sine_value(angle+240);
 		TIM1->CCR1=(DUTY_CYCLE_LIMIT/2.0f)+sin_u*(max_duty_cycle/2.0f);
 		TIM1->CCR2=(DUTY_CYCLE_LIMIT/2.0f)+sin_v*(max_duty_cycle/2.0f);
 		TIM1->CCR3=(DUTY_CYCLE_LIMIT/2.0f)+sin_w*(max_duty_cycle/2.0f);

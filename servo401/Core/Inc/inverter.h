@@ -9,7 +9,7 @@
 #define INC_INVERTER_H_
 
 #define INVERTER_OVERCURRENT_TRIP_LEVEL 8.0f  //overcurrrent trip setting level in Amperes
-#define INVERTER_OVERVOLTAGE_LEVEL 35.0f
+#define INVERTER_OVERVOLTAGE_LEVEL 90.0f
 #define INVERTER_UNDERVOLTAGE_LEVEL 20.0f
 #define DUTY_CYCLE_LIMIT 4999
 #define CURRENT_SENSE_RATIO 0.0166023f //multiply this number with number of adc samples measured from current sensor output 0.0119827@4.17A 0.012126 0.0132173@1.52a
@@ -57,7 +57,7 @@ extern float I_q_last;
 extern float I_q_filtered;
 
 extern uint8_t encoder_positioned;
-extern uint16_t encoder_correction;
+extern uint16_t encoder_correction_abz;
 extern int16_t encoder_actual_position;
 extern float actual_electric_angle;
 extern float last_actual_electric_angle;

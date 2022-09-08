@@ -53,10 +53,10 @@
 volatile uint16_t ADC_rawdata[4];
 
 volatile PID_t id_current_controller_data = {
-		1000.0f,0.0f,DUTY_CYCLE_LIMIT,DUTY_CYCLE_LIMIT,2E-04f,0.0f,0.0f,0.0f,0.0f
+		3000.0f,30.0f,DUTY_CYCLE_LIMIT,DUTY_CYCLE_LIMIT,2E-04f,0.0f,0.0f,0.0f,0.0f
 };
 volatile PID_t iq_current_controller_data = {
-		6000.0f,5.0f,DUTY_CYCLE_LIMIT,DUTY_CYCLE_LIMIT,2E-04f,0.0f,0.0f,0.0f,0.0f
+		6000.0f,30.0f,DUTY_CYCLE_LIMIT,DUTY_CYCLE_LIMIT,2E-04f,0.0f,0.0f,0.0f,0.0f
 };
 
 volatile PID_t speed_controller_data = {
@@ -113,8 +113,9 @@ float U_alpha = 0.0f;
 float U_beta = 0.0f;
 
 uint8_t encoder_positioned=0;
-uint16_t encoder_correction=40;
+uint16_t encoder_correction_abz=40;
 int16_t encoder_actual_position=0;
+int16_t encoder_correction_angle=-30; //offset in degrees between encoder 0 position and stator zero electric angle
 float actual_electric_angle=0.0f;
 float last_actual_electric_angle=0.0f;
 float actual_torque_angle=0.0f;
@@ -430,7 +431,7 @@ void DMA2_Stream0_IRQHandler(void)
 						if(TIM2->CNT <5000){encoder_actual_position=5000-TIM2->CNT;}
 						else{encoder_actual_position=10000-TIM2->CNT;}
 						modbus_registers_buffer[11]=encoder_actual_position;
-						int16_t corrected_encoder_position=((encoder_actual_position % 1000) - encoder_correction);
+						int16_t corrected_encoder_position=((encoder_actual_position % 1000) - encoder_correction_abz);
 						if(corrected_encoder_position<0){corrected_encoder_position+=1000;}
 						actual_electric_angle=(float)(corrected_encoder_position)*0.36f;
 						if(actual_electric_angle-electric_angle>180.0f){actual_torque_angle=(actual_electric_angle-electric_angle) - 360.0f;}
@@ -449,8 +450,16 @@ void DMA2_Stream0_IRQHandler(void)
 				}
 				if(motor_feedback_type==ssi_encoder){
 					modbus_registers_buffer[11]=ssi_encoder_data.encoder_position;
-					if(ssi_encoder_data.encoder_resolution==p8192ppr){actual_electric_angle=((fmodf(ssi_encoder_data.encoder_position, 8192.0f/POLE_PAIRS))/(8192.0f/POLE_PAIRS))*360.0f;}
-					if(ssi_encoder_data.encoder_resolution==p131072ppr){actual_electric_angle=((fmodf(ssi_encoder_data.encoder_position,8192.0f/POLE_PAIRS))/(131072.0f/POLE_PAIRS))*360.0f;}
+					if(ssi_encoder_data.encoder_resolution==p8192ppr){
+						actual_electric_angle=(((fmodf(ssi_encoder_data.encoder_position, 8192.0f/POLE_PAIRS))/(8192.0f/POLE_PAIRS))*360.0f)+encoder_correction_angle;
+						if(actual_electric_angle>=360.0f){actual_electric_angle-=360.0f;}
+						if(actual_electric_angle<0){actual_electric_angle+=360.0f;}
+					}
+					if(ssi_encoder_data.encoder_resolution==p131072ppr){
+						actual_electric_angle=(((fmodf(ssi_encoder_data.encoder_position,8192.0f/POLE_PAIRS))/(131072.0f/POLE_PAIRS))*360.0f)+encoder_correction_angle;
+						if(actual_electric_angle>=360.0f){actual_electric_angle-=360.0f;}
+						if(actual_electric_angle<0){actual_electric_angle+=360.0f;}
+					}
 					if(ssi_encoder_data.encoder_resolution==unknown_resolution){actual_electric_angle=0;}//@TODO encoder error trip
 					if(actual_electric_angle-electric_angle>180.0f){actual_torque_angle=(actual_electric_angle-electric_angle) - 360.0f;}
 					else if(actual_electric_angle-electric_angle<(-180.0f)){actual_torque_angle=actual_electric_angle-electric_angle + 360.0f;}
@@ -473,7 +482,7 @@ void DMA2_Stream0_IRQHandler(void)
 
 				}
 
-				park_transform(I_U, I_V, actual_electric_angle, &I_d, &I_q);
+				park_transform(I_U, I_V, 360.0f-actual_electric_angle, &I_d, &I_q);
 				I_d_filtered = LowPassFilter(0.007, I_d, &I_d_last);
 				I_q_filtered = LowPassFilter(0.007, I_q, &I_q_last);
 				modbus_registers_buffer[15]=(int16_t)(I_d_filtered*100);
