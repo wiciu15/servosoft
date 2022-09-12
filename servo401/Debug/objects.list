@@ -9,6 +9,7 @@
 "./Core/Src/syscalls.o"
 "./Core/Src/sysmem.o"
 "./Core/Src/system_stm32f4xx.o"
+"./Core/Src/tamagawa_encoder.o"
 "./Core/Startup/startup_stm32f401ccux.o"
 "./Core/stModbus/src/modbus.o"
 "./Core/stModbus/src/rtu/mbutils.o"

@@ -31,6 +31,7 @@
 #include "inverter.h"
 #include "lookuptables.h"
 #include "mitsubishi_encoder.h"
+#include "tamagawa_encoder.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -52,15 +53,15 @@
 /* USER CODE BEGIN PV */
 volatile uint16_t ADC_rawdata[4];
 
-volatile PID_t id_current_controller_data = {
-		3000.0f,30.0f,DUTY_CYCLE_LIMIT,DUTY_CYCLE_LIMIT,2E-04f,0.0f,0.0f,0.0f,0.0f
+ PID_t id_current_controller_data = {
+		8000.0f,0.0f,DUTY_CYCLE_LIMIT,DUTY_CYCLE_LIMIT,2E-04f,0.0f,0.0f,0.0f,0.0f
 };
-volatile PID_t iq_current_controller_data = {
-		6000.0f,30.0f,DUTY_CYCLE_LIMIT,DUTY_CYCLE_LIMIT,2E-04f,0.0f,0.0f,0.0f,0.0f
+ PID_t iq_current_controller_data = {
+		6000.0f,0.0f,DUTY_CYCLE_LIMIT,DUTY_CYCLE_LIMIT,2E-04f,0.0f,0.0f,0.0f,0.0f
 };
 
-volatile PID_t speed_controller_data = {
-		0.05f,0.1f,10.0f,10.0f,0.0016f,0.0f,0.0f,0.0f,0.0f
+PID_t speed_controller_data = {
+		0.2f,0.6f,25.0f,35.0f,0.0016f,0.0f,0.0f,0.0f,0.0f
 };
 
 volatile enum inverter_control_mode_t inv_control_mode = stop;
@@ -115,11 +116,11 @@ float U_beta = 0.0f;
 uint8_t encoder_positioned=0;
 uint16_t encoder_correction_abz=40;
 int16_t encoder_actual_position=0;
-int16_t encoder_correction_angle=-30; //offset in degrees between encoder 0 position and stator zero electric angle
+int16_t encoder_correction_angle=-122; //offset in degrees between encoder 0 position and stator zero electric angle
 float actual_electric_angle=0.0f;
 float last_actual_electric_angle=0.0f;
 float actual_torque_angle=0.0f;
-motor_feedback_type_t motor_feedback_type=ssi_encoder;
+motor_feedback_type_t motor_feedback_type=tamagawa_encoder;
 
 float speed_measurement_loop_i=0;
 float speed=0.0f;
@@ -321,7 +322,7 @@ void TIM3_IRQHandler(void)
 {
   /* USER CODE BEGIN TIM3_IRQn 0 */
 	HAL_ADC_Start_DMA(&hadc1, ADC_rawdata, 4);
-	motor_encoder_read_position();
+	tamagawa_encoder_read_position();
 	HAL_GPIO_WritePin(DISP_LATCH_GPIO_Port, DISP_LATCH_Pin, 1);
 
   /* USER CODE END TIM3_IRQn 0 */
@@ -469,8 +470,8 @@ void DMA2_Stream0_IRQHandler(void)
 					if(speed_measurement_loop_i>=30){
 						if(ssi_encoder_data.encoder_resolution==p8192ppr){
 							//speed(rpm)=(position pulse delta/enc resolution)*(60s/sample time(s))
-							//speed=(delta/8192)*(60/0,003)
-							speed=((float)ssi_encoder_data.encoder_position-(float)ssi_encoder_data.last_encoder_position_speed_loop)*1.2207f;
+							//speed=(delta/8192)*(60/0,006)
+							speed=((float)ssi_encoder_data.encoder_position-(float)ssi_encoder_data.last_encoder_position_speed_loop)*0.66f;
 							if(speed>5000.0f){speed-=10000.0f;}if(speed<-5000.0f){speed+=10000.0f;}
 						}
 						//@TODO: add speed measurement for 19bit encoders
@@ -480,6 +481,30 @@ void DMA2_Stream0_IRQHandler(void)
 					filtered_speed=LowPassFilter(0.01,speed, &last_filtered_actual_speed);
 					modbus_registers_buffer[13]=(int16_t)(speed);
 
+				}
+				if(motor_feedback_type==tamagawa_encoder){
+					modbus_registers_buffer[11]=tamagawa_encoder_data.encoder_position/2;
+					actual_electric_angle=(((fmodf(tamagawa_encoder_data.encoder_position, 131072.0f/POLE_PAIRS))/(131072.0f/POLE_PAIRS))*360.0f)+encoder_correction_angle;
+					if(actual_electric_angle>=360.0f){actual_electric_angle-=360.0f;}
+					if(actual_electric_angle<0){actual_electric_angle+=360.0f;}
+
+					if(actual_electric_angle-electric_angle>180.0f){actual_torque_angle=(actual_electric_angle-electric_angle) - 360.0f;}
+					else if(actual_electric_angle-electric_angle<(-180.0f)){actual_torque_angle=actual_electric_angle-electric_angle + 360.0f;}
+					else{actual_torque_angle=actual_electric_angle-electric_angle;}
+					modbus_registers_buffer[12]=(int16_t)actual_torque_angle;//write calculated value to modbus array
+					speed_measurement_loop_i++;
+					if(speed_measurement_loop_i>=30){
+
+						//speed(rpm)=(position pulse delta/enc resolution)*(60s/sample time(s))
+						//speed=(delta/131072)*(60/0,006)
+						speed=((float)tamagawa_encoder_data.encoder_position-(float)tamagawa_encoder_data.last_encoder_position_speed_loop)*0.076293f;
+						if(speed>5000.0f){speed-=10000.0f;}if(speed<-5000.0f){speed+=10000.0f;}
+
+						tamagawa_encoder_data.last_encoder_position_speed_loop=tamagawa_encoder_data.encoder_position;
+						speed_measurement_loop_i=0;
+					}
+					filtered_speed=LowPassFilter(0.05,speed, &last_filtered_actual_speed);
+					modbus_registers_buffer[13]=(int16_t)(speed);
 				}
 
 				park_transform(I_U, I_V, 360.0f-actual_electric_angle, &I_d, &I_q);

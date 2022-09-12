@@ -117,11 +117,10 @@ int main(void)
   /* USER CODE END SysInit */
 
   /* Initialize all configured peripherals */
-  MX_GPIO_Init();
-
+  MX_GPIO_Init();MX_DMA_Init();
+  MX_ADC1_Init();
   MX_TIM1_Init();
   MX_TIM2_Init();
-  MX_DMA_Init();MX_ADC1_Init();
   MX_USART2_UART_Init();
   MX_USART1_UART_Init();
   MX_TIM3_Init();
@@ -634,7 +633,7 @@ static void MX_GPIO_Init(void)
   __HAL_RCC_GPIOB_CLK_ENABLE();
 
   /*Configure GPIO pin Output Level */
-  HAL_GPIO_WritePin(SOFTSTART_GPIO_Port, SOFTSTART_Pin, GPIO_PIN_RESET);
+  HAL_GPIO_WritePin(GPIOC, GPIO_PIN_13|SOFTSTART_Pin, GPIO_PIN_RESET);
 
   /*Configure GPIO pin Output Level */
   HAL_GPIO_WritePin(GPIOB, INPUTS_LOAD_Pin|INPUTS_CS_Pin|DISP_LATCH_Pin|DISP_EN_Pin
@@ -643,18 +642,12 @@ static void MX_GPIO_Init(void)
   /*Configure GPIO pin Output Level */
   HAL_GPIO_WritePin(GPIOB, INV_ENABLE_Pin|INV_DISABLE_Pin, GPIO_PIN_SET);
 
-  /*Configure GPIO pin : PC13 */
-  GPIO_InitStruct.Pin = GPIO_PIN_13;
-  GPIO_InitStruct.Mode = GPIO_MODE_INPUT;
-  GPIO_InitStruct.Pull = GPIO_NOPULL;
-  HAL_GPIO_Init(GPIOC, &GPIO_InitStruct);
-
-  /*Configure GPIO pin : SOFTSTART_Pin */
-  GPIO_InitStruct.Pin = SOFTSTART_Pin;
+  /*Configure GPIO pins : PC13 SOFTSTART_Pin */
+  GPIO_InitStruct.Pin = GPIO_PIN_13|SOFTSTART_Pin;
   GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
-  HAL_GPIO_Init(SOFTSTART_GPIO_Port, &GPIO_InitStruct);
+  HAL_GPIO_Init(GPIOC, &GPIO_InitStruct);
 
   /*Configure GPIO pins : INPUTS_LOAD_Pin INPUTS_CS_Pin DISP_LATCH_Pin INV_ENABLE_Pin
                            INV_DISABLE_Pin DISP_EN_Pin MODBUS_DE_Pin ADC_CS_Pin */
@@ -705,8 +698,12 @@ void HAL_UART_ErrorCallback(UART_HandleTypeDef *huart)
 void HAL_UART_TxCpltCallback(UART_HandleTypeDef *huart)
 {
 	if(huart->Instance == USART1){
-	HAL_GPIO_WritePin(MODBUS_DE_GPIO_Port,MODBUS_DE_Pin, 0);
+		HAL_GPIO_WritePin(MODBUS_DE_GPIO_Port,MODBUS_DE_Pin, 0);
 	}
+	if(huart->Instance == USART2){
+		HAL_GPIO_WritePin(GPIOC,GPIO_PIN_13, 0);
+	}
+
 }
 /* USER CODE END 4 */
 

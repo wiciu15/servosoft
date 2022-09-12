@@ -75,8 +75,10 @@ uint16_t modbus_protocol_write(uint32_t la, uint16_t value)
 		if(inv_control_mode==foc){
 			int8_t received_torque_setpoint = (int16_t)value;
 			if(received_torque_setpoint>=-100 && received_torque_setpoint<=100){
-				torque_setpoint=received_torque_setpoint;
-				modbus_registers_buffer[7]=(int16_t)torque_setpoint;
+				if(speed_setpoint_rpm==0){
+					torque_setpoint=received_torque_setpoint;
+					modbus_registers_buffer[7]=(int16_t)torque_setpoint;
+				}
 			}
 		}
 

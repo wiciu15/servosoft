@@ -77,7 +77,9 @@ void motor_encoder_read_position(void){
 	//set command to send to encoder depending on its type
 	if(ssi_encoder_data.encoder_resolution==p8192ppr){ssi_encoder_data.encoder_command=0x1A;}//j2s series also gives position after this command but resolution is limited to 16-bit
 	else {ssi_encoder_data.encoder_command=0xA2;}
-	HAL_StatusTypeDef err_code = HAL_UART_Transmit_DMA(&huart2, &ssi_encoder_data.encoder_command, 1);
+	HAL_GPIO_WritePin(GPIOC,GPIO_PIN_13, 1);
+	HAL_StatusTypeDef err_code = HAL_UART_Transmit(&huart2, &ssi_encoder_data.encoder_command, 1,1);
+	HAL_GPIO_WritePin(GPIOC,GPIO_PIN_13, 0);
 	if(err_code!=HAL_OK){
 		ssi_encoder_data.encoder_state=encoder_error_uart_busy;
 	}

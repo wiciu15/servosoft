@@ -62,7 +62,7 @@ extern int16_t encoder_actual_position;
 extern float actual_electric_angle;
 extern float last_actual_electric_angle;
 extern float actual_torque_angle;
-typedef enum {no_feedback,abz_encoder,ssi_encoder} motor_feedback_type_t;
+typedef enum {no_feedback,abz_encoder,ssi_encoder,tamagawa_encoder} motor_feedback_type_t;
 extern motor_feedback_type_t motor_feedback_type;
 
 extern float speed_measurement_loop_i;
