@@ -8,19 +8,20 @@
 #ifndef INC_INVERTER_H_
 #define INC_INVERTER_H_
 
-#define INVERTER_OVERCURRENT_TRIP_LEVEL 8.0f  //overcurrrent trip setting level in Amperes
+#define INVERTER_OVERCURRENT_TRIP_LEVEL 11.0f  //overcurrrent trip setting level in Amperes
 #define INVERTER_OVERVOLTAGE_LEVEL 90.0f
 #define INVERTER_UNDERVOLTAGE_LEVEL 20.0f
 #define DUTY_CYCLE_LIMIT 4999
 #define CURRENT_SENSE_RATIO 0.0166023f //multiply this number with number of adc samples measured from current sensor output 0.0119827@4.17A 0.012126 0.0132173@1.52a
-#define POLE_PAIRS 4.0f
 #define CURRENT_RMS_SAMPLING_COUNT 500 //(2*pwm frequency)/this define=rms current sampling frequency, for 500 = 32 calculations per second
 
-typedef enum {no_error,undervoltage,overvoltage,shortcircuit,overcurrent,encoder_error,internal_hardfault}inverter_error_t;
-enum inverter_control_mode_t {stop,manual,foc};
+typedef enum {no_error,undervoltage,overvoltage,shortcircuit,inverter_overcurrent,motor_overcurrent,encoder_error,internal_hardfault}inverter_error_t;
+typedef enum {stop,run,inhibit,trip}inverter_state_t;
+typedef enum {manual,scalar,foc}control_mode_t;
 
 extern volatile inverter_error_t inverter_error;
-extern volatile enum inverter_control_mode_t inv_control_mode;
+extern volatile control_mode_t control_mode;
+extern volatile inverter_state_t inverter_state;
 extern volatile float speed_setpoint_deg_s; //speed in degrees/s
 extern volatile int16_t speed_setpoint_rpm;
 extern float motor_angle;
@@ -77,7 +78,7 @@ void park_transform(float I_U,float I_V,float motor_angle,float * I_d,float * I_
 void inv_park_transform(float U_d,float U_q, float motor_angle, float * U_alpha, float * U_beta);
 float LowPassFilter(float Tf, float actual_measurement, float * last_filtered_value);
 float get_sine_value(uint16_t angle);
-void output_sine_pwm(uint16_t angle,uint16_t max_duty_cycle);
+void output_sine_pwm(float angle,uint16_t max_duty_cycle);
 void output_svpwm(uint16_t angle,uint16_t max_duty_cycle);
 
 #endif /* INC_INVERTER_H_ */

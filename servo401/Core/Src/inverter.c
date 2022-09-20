@@ -16,8 +16,10 @@ extern TIM_HandleTypeDef htim1;
 extern UART_HandleTypeDef huart1;
 volatile inverter_error_t inverter_error=no_error;
 
+
 void inverter_enable(){
 	if(inverter_error==0){
+		inverter_state=run;
 		speed_setpoint_deg_s=0.0f;
 		duty_cycle=0.0f;
 		TIM1->CCR1=0;
@@ -35,6 +37,7 @@ void inverter_enable(){
 void inverter_disable(){
 	speed_setpoint_deg_s=0.0f;
 	duty_cycle=0.0f;
+	inverter_state=stop;
 	//TIM1->CCR1=0;TIM1->CCR2=0;TIM1->CCR3=0;
 	HAL_GPIO_WritePin(INV_DISABLE_GPIO_Port, INV_DISABLE_Pin, GPIO_PIN_RESET);
 	HAL_GPIO_WritePin(INV_DISABLE_GPIO_Port, INV_DISABLE_Pin, GPIO_PIN_SET);
@@ -48,6 +51,7 @@ void inverter_disable(){
 
 void inverter_error_trip(inverter_error_t error){
 	inverter_disable();
+	inverter_state=trip;
 	inverter_error=error;
 	modbus_registers_buffer[2]=error;
 }
@@ -99,8 +103,8 @@ float get_sine_value(uint16_t angle){
 	return sine;
 }
 
-//this doesnt work
-void output_sine_pwm(uint16_t angle,uint16_t max_duty_cycle){
+void output_sine_pwm(float angle,uint16_t max_duty_cycle){
+	float angle_rad = (angle/180.0f)*3.141592f;
 	float sin_u = 0;
 	float sin_v = 0;
 	float sin_w = 0;
@@ -109,9 +113,9 @@ void output_sine_pwm(uint16_t angle,uint16_t max_duty_cycle){
 		TIM1->CCR2=0;
 		TIM1->CCR3=0;
 	}else{
-		sin_u=get_sine_value(angle);
-		sin_v=get_sine_value(angle+120);
-		sin_w=get_sine_value(angle+240);
+		sin_u=sinf(angle_rad);
+		sin_v=sinf(angle_rad+2.094395f);
+		sin_w=sinf(angle_rad+4.1887902f);
 		TIM1->CCR1=(DUTY_CYCLE_LIMIT/2.0f)+sin_u*(max_duty_cycle/2.0f);
 		TIM1->CCR2=(DUTY_CYCLE_LIMIT/2.0f)+sin_v*(max_duty_cycle/2.0f);
 		TIM1->CCR3=(DUTY_CYCLE_LIMIT/2.0f)+sin_w*(max_duty_cycle/2.0f);

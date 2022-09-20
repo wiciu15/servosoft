@@ -22,6 +22,6 @@ typedef struct _tamagawa_encoder_data_t {
 }tamagawa_encoder_data_t;
 extern tamagawa_encoder_data_t tamagawa_encoder_data;
 
-void motor_encoder_read_position(void);
+void tamagawa_encoder_read_position(void);
 
 #endif /* INC_TAMAGAWA_ENCODER_H_ */

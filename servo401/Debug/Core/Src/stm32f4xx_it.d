@@ -46,7 +46,8 @@ Core/Src/stm32f4xx_it.o: ../Core/Src/stm32f4xx_it.c ../Core/Inc/main.h \
  ../Core/stModbus/include/mbutils.h ../Core/Inc/pid.h \
  ../Core/Inc/inverter.h ../Core/Inc/lookuptables.h \
  ../Core/Inc/mitsubishi_encoder.h ../Core/Inc/main.h \
- ../Core/Inc/tamagawa_encoder.h ../Core/Inc/mitsubishi_encoder.h
+ ../Core/Inc/tamagawa_encoder.h ../Core/Inc/mitsubishi_encoder.h \
+ ../Core/Inc/parameter_set.h
 ../Core/Inc/main.h:
 ../Drivers/STM32F4xx_HAL_Driver/Inc/stm32f4xx_hal.h:
 ../Core/Inc/stm32f4xx_hal_conf.h:
@@ -101,3 +102,4 @@ Core/Src/stm32f4xx_it.o: ../Core/Src/stm32f4xx_it.c ../Core/Inc/main.h \
 ../Core/Inc/main.h:
 ../Core/Inc/tamagawa_encoder.h:
 ../Core/Inc/mitsubishi_encoder.h:
+../Core/Inc/parameter_set.h:
