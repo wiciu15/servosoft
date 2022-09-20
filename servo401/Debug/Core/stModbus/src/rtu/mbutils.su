@@ -1,2 +1,0 @@
-../Core/stModbus/src/rtu/mbutils.c:100:10:mbus_crc16	24	static
-../Core/stModbus/src/rtu/mbutils.c:105:10:mbus_tickcount	4	static

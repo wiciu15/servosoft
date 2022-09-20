@@ -1,2 +1,0 @@
-../Core/Src/mitsubishi_encoder.c:9:6:motor_identification	16	static
-../Core/Src/mitsubishi_encoder.c:42:6:motor_encoder_read_position	24	static

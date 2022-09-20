@@ -1,9 +1,0 @@
-../Core/Src/inverter.c:20:6:inverter_enable	8	static
-../Core/Src/inverter.c:37:6:inverter_disable	8	static
-../Core/Src/inverter.c:52:6:inverter_error_trip	16	static
-../Core/Src/inverter.c:59:6:park_transform	56	static
-../Core/Src/inverter.c:68:6:inv_park_transform	48	static
-../Core/Src/inverter.c:75:7:LowPassFilter	32	static
-../Core/Src/inverter.c:82:7:get_sine_value	24	static
-../Core/Src/inverter.c:106:6:output_sine_pwm	32	static
-../Core/Src/inverter.c:125:6:output_svpwm	32	static
