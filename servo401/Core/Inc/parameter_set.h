@@ -8,6 +8,10 @@
 #ifndef INC_PARAMETER_SET_H_
 #define INC_PARAMETER_SET_H_
 
+#include "inverter.h"
+
+typedef enum {no_feedback,abz_encoder,ssi_encoder,tamagawa_encoder}motor_feedback_type_t;
+
 typedef struct _parameter_set_t{
 	float motor_max_current; //current for motor overcurrent trip
 	float motor_nominal_current; //current for torque calculation

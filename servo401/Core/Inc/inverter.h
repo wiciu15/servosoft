@@ -8,6 +8,8 @@
 #ifndef INC_INVERTER_H_
 #define INC_INVERTER_H_
 
+#include "parameter_set.h"
+
 #define INVERTER_OVERCURRENT_TRIP_LEVEL 11.0f  //overcurrrent trip setting level in Amperes
 #define INVERTER_OVERVOLTAGE_LEVEL 90.0f
 #define INVERTER_UNDERVOLTAGE_LEVEL 20.0f
@@ -18,6 +20,9 @@
 typedef enum {no_error,undervoltage,overvoltage,shortcircuit,inverter_overcurrent,motor_overcurrent,encoder_error,internal_hardfault}inverter_error_t;
 typedef enum {stop,run,inhibit,trip}inverter_state_t;
 typedef enum {manual,scalar,foc}control_mode_t;
+
+
+extern parameter_set_t parameter_set;
 
 extern volatile inverter_error_t inverter_error;
 extern volatile control_mode_t control_mode;
@@ -30,6 +35,7 @@ extern volatile float duty_cycle;
 extern const uint16_t duty_cycle_limit;
 
 extern float torque_setpoint;
+extern float id_setpoint;
 extern float U_DClink;
 extern float U_DClink_last;
 extern float U_DClink_filtered;
@@ -63,7 +69,7 @@ extern int16_t encoder_actual_position;
 extern float actual_electric_angle;
 extern float last_actual_electric_angle;
 extern float actual_torque_angle;
-typedef enum {no_feedback,abz_encoder,ssi_encoder,tamagawa_encoder} motor_feedback_type_t;
+
 extern motor_feedback_type_t motor_feedback_type;
 
 extern float speed_measurement_loop_i;

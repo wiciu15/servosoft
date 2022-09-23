@@ -599,7 +599,7 @@ void DMA2_Stream0_IRQHandler(void)
 				}
 				if(control_mode==foc && modbus_registers_buffer[3] ==1){
 					U_d = PI_control(&id_current_controller_data, id_setpoint-I_d_filtered);
-					U_q = PI_control(&iq_current_controller_data,(torque_setpoint/10.0f)-I_q_filtered);
+					U_q = PI_control(&iq_current_controller_data,(torque_setpoint)-I_q_filtered);
 					inv_park_transform(U_d, U_q, actual_electric_angle, &U_alpha, &U_beta);
 					duty_cycle=sqrtf(U_alpha*U_alpha+U_beta*U_beta);
 

@@ -7,8 +7,8 @@
 
 #include "main.h"
 #include "modbus.h"
-#include "inverter.h"
 #include <string.h>
+#include "inverter.h"
 
 mbus_t modbus;
 Modbus_Conf_t mb_config;
@@ -73,24 +73,33 @@ uint16_t modbus_protocol_write(uint32_t la, uint16_t value)
 			modbus_registers_buffer[7]=duty_cycle;
 		}
 		if(control_mode==foc){
-			int8_t received_torque_setpoint = (int16_t)value;
-			if(received_torque_setpoint>=-100 && received_torque_setpoint<=100){
+			int16_t received_torque_setpoint = (int16_t)value;
+			if(received_torque_setpoint>=-300 && received_torque_setpoint<=300){
 				if(speed_setpoint_rpm==0){
-					torque_setpoint=received_torque_setpoint;
+					torque_setpoint=(received_torque_setpoint/100.0f)*parameter_set.motor_nominal_current;
 					modbus_registers_buffer[7]=(int16_t)torque_setpoint;
 				}
 			}
 		}
 
 		break;
-	case 8:
-		if(value<=3){
-			motor_feedback_type=value;
-		modbus_registers_buffer[8]=motor_feedback_type;}
+		case 8:
+			if(control_mode==foc){
+				int16_t received_field_setpoint = value;
+				if(received_field_setpoint>=0 && received_field_setpoint<=100){
+					id_setpoint=-(received_field_setpoint/100.0f)*parameter_set.motor_nominal_current;
+					modbus_registers_buffer[8]=received_field_setpoint;
+				}
+			}
+			break;
+		case 10:
+			if(value<=3){
+				motor_feedback_type=value;
+				modbus_registers_buffer[10]=motor_feedback_type;}
 		}
-	default:
-		//if not handled inside switch, then read-only parameter
-		break;
+		default:
+			//if not handled inside switch, then read-only parameter
+			break;
 	}
 	return value;
 }
