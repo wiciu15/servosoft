@@ -57,13 +57,14 @@
 parameter_set_t parameter_set={
 		.motor_max_current=14.3f, //14.3 according to datasheet
 		.motor_nominal_current=5.3f,
-		.motor_pole_pairs=4,
+		.motor_pole_pairs=5, //4 for abb motor
 		.motor_max_voltage=150,
 		.motor_max_torque=7.17,
 		.motor_nominal_torque=2.39,
 		.motor_max_speed=3000,
-		.motor_feedback_type=tamagawa_encoder,
-		.encoder_electric_angle_correction=-122,
+		.motor_feedback_type=abz_encoder,
+		.encoder_electric_angle_correction=-15,//-122 for abb motor
+		.encoder_resolution=5000,
 
 		.current_filter_ts=0.007,
 		.torque_current_ctrl_proportional_gain=2000.0f, //float torque_current_ctrl_integral_gain; --NOT USED-- if integral other than zero then unloaded motor will saturate the current controller integral gain and motor will generate torque even if commanded to 0 torque
@@ -73,8 +74,8 @@ parameter_set_t parameter_set={
 		.speed_filter_ts=0.005,
 		.speed_controller_proportional_gain=0.06f,
 		.speed_controller_integral_gain=0.8f,
-		.speed_controller_output_torque_limit=30.0f, //limit torque, Id/10 is the output so the calcualtion is needed to convert N/m to A
-		.speed_controller_integral_limit=30.0f
+		.speed_controller_output_torque_limit=50.0f, //limit torque, Id/10 is the output so the calcualtion is needed to convert N/m to A
+		.speed_controller_integral_limit=50.0f
 };
 
 volatile uint16_t ADC_rawdata[4];
@@ -420,6 +421,25 @@ void USART2_IRQHandler(void)
 }
 
 /**
+  * @brief This function handles EXTI line[15:10] interrupts.
+  */
+void EXTI15_10_IRQHandler(void)
+{
+  /* USER CODE BEGIN EXTI15_10_IRQn 0 */
+	if(HAL_GPIO_ReadPin(ENC_Z_GPIO_Port, ENC_Z_Pin)==1){
+			TIM2->CNT=parameter_set.encoder_resolution;
+			encoder_positioned=1;
+		}
+  /* USER CODE END EXTI15_10_IRQn 0 */
+  HAL_GPIO_EXTI_IRQHandler(STEP_Pin);
+  HAL_GPIO_EXTI_IRQHandler(DIR_Pin);
+  HAL_GPIO_EXTI_IRQHandler(ENC_Z_Pin);
+  /* USER CODE BEGIN EXTI15_10_IRQn 1 */
+
+  /* USER CODE END EXTI15_10_IRQn 1 */
+}
+
+/**
   * @brief This function handles DMA2 stream0 global interrupt.
   */
 void DMA2_Stream0_IRQHandler(void)
@@ -485,24 +505,26 @@ void DMA2_Stream0_IRQHandler(void)
 
 				if(parameter_set.motor_feedback_type==abz_encoder){
 					if(encoder_positioned){
-						if(TIM2->CNT <5000){encoder_actual_position=5000-TIM2->CNT;}
-						else{encoder_actual_position=10000-TIM2->CNT;}
+						if(TIM2->CNT <parameter_set.encoder_resolution){encoder_actual_position=parameter_set.encoder_resolution-TIM2->CNT;}
+						else{encoder_actual_position=parameter_set.encoder_resolution-TIM2->CNT;}
 						modbus_registers_buffer[11]=encoder_actual_position;
-						int16_t corrected_encoder_position=((encoder_actual_position % 1000) - encoder_correction_abz);
-						if(corrected_encoder_position<0){corrected_encoder_position+=1000;}
-						actual_electric_angle=(float)(corrected_encoder_position)*0.36f;
+						int16_t corrected_encoder_position=encoder_actual_position % (parameter_set.encoder_resolution/parameter_set.motor_pole_pairs);
+						if(corrected_encoder_position<0){corrected_encoder_position+=(parameter_set.encoder_resolution/parameter_set.motor_pole_pairs);}
+						actual_electric_angle=(float)(corrected_encoder_position)*0.36f-parameter_set.encoder_electric_angle_correction;
 						if(actual_electric_angle-electric_angle>180.0f){actual_torque_angle=(actual_electric_angle-electric_angle) - 360.0f;}
 						else if(actual_electric_angle-electric_angle<(-180.0f)){actual_torque_angle=actual_electric_angle-electric_angle + 360.0f;}
 						else{actual_torque_angle=actual_electric_angle-electric_angle;}
 						modbus_registers_buffer[12]=(int16_t)actual_torque_angle;//write calculated value to modbus array
 						speed_measurement_loop_i++;
-						if(speed_measurement_loop_i>=30){
-							speed=(actual_electric_angle-last_actual_electric_angle)*17.77777f; //speed(rpm) = ((x(deg)/polepairs)/360deg)/(0,001875(s)/60s)
-							if(speed>3200){speed-=6400;}if(speed<(-3200)){speed+=6400;}
+						if(speed_measurement_loop_i>=10){
+							speed=((actual_electric_angle-last_actual_electric_angle)/parameter_set.motor_pole_pairs)/0.012f; //speed(rpm) = ((x(deg)/polepairs)/360deg)/(0,002(s)/60s)
+							float theoretical_encoder_speed=(360.0f/parameter_set.motor_pole_pairs)/0.012f;
+							if(speed>theoretical_encoder_speed/2.0f){speed-=theoretical_encoder_speed;}if(speed<(-theoretical_encoder_speed/2.0f)){speed+=theoretical_encoder_speed;}
 							modbus_registers_buffer[13]=(int16_t)(filtered_speed);
 							last_actual_electric_angle = actual_electric_angle;
 							speed_measurement_loop_i=0;
 						}
+						filtered_speed=LowPassFilter(speed_filter_ts,speed, &last_filtered_actual_speed);
 					}
 				}
 				if(parameter_set.motor_feedback_type==ssi_encoder){
@@ -531,7 +553,7 @@ void DMA2_Stream0_IRQHandler(void)
 							speed=((float)ssi_encoder_data.encoder_position-(float)ssi_encoder_data.last_encoder_position_speed_loop)*0.66f;
 							if(speed>5000.0f){speed-=10000.0f;}if(speed<-5000.0f){speed+=10000.0f;}
 						}
-						//@TODO: add speed measurement for 19bit encoders
+						//@TODO: add speed measurement for 17bit encoders
 						ssi_encoder_data.last_encoder_position_speed_loop=ssi_encoder_data.encoder_position;
 						speed_measurement_loop_i=0;
 					}
@@ -634,9 +656,6 @@ void DMA2_Stream7_IRQHandler(void)
 
 /* USER CODE BEGIN 1 */
 void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin){
-	if(GPIO_Pin==ENC_Z_Pin){
-		TIM2->CNT=5000;
-		encoder_positioned=1;
-	}
+
 }
 /* USER CODE END 1 */

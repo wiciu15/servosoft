@@ -97,10 +97,13 @@ void Error_Handler(void);
 #define W_PWM_GPIO_Port GPIOA
 #define STEP_Pin GPIO_PIN_11
 #define STEP_GPIO_Port GPIOA
+#define STEP_EXTI_IRQn EXTI15_10_IRQn
 #define DIR_Pin GPIO_PIN_12
 #define DIR_GPIO_Port GPIOA
+#define DIR_EXTI_IRQn EXTI15_10_IRQn
 #define ENC_Z_Pin GPIO_PIN_15
 #define ENC_Z_GPIO_Port GPIOA
+#define ENC_Z_EXTI_IRQn EXTI15_10_IRQn
 #define DISP_EN_Pin GPIO_PIN_4
 #define DISP_EN_GPIO_Port GPIOB
 #define OC_ALARM_Pin GPIO_PIN_5
