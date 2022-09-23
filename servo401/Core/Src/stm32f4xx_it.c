@@ -451,8 +451,8 @@ void DMA2_Stream0_IRQHandler(void)
 	iq_current_controller_data.proportional_gain=parameter_set.torque_current_ctrl_proportional_gain;
 	speed_controller_data.proportional_gain=parameter_set.speed_controller_proportional_gain;
 	speed_controller_data.integral_gain=parameter_set.speed_controller_integral_gain;
-	speed_controller_data.antiwindup_limit=parameter_set.speed_controller_integral_limit;
-	speed_controller_data.output_limit=parameter_set.speed_controller_output_torque_limit;
+	speed_controller_data.antiwindup_limit=parameter_set.motor_nominal_current;
+	speed_controller_data.output_limit=parameter_set.motor_nominal_current;
 
 	if(zerocurrent_reading_loop_i<15){ //after starting servo read ADC samples when output current is zero to minimize current transducers, opamps and ADC offset
 				I_U_zerocurrentreading+=ADC_rawdata[0];
