@@ -87,7 +87,7 @@ uint16_t modbus_protocol_write(uint32_t la, uint16_t value)
 			if(control_mode==foc){
 				int16_t received_field_setpoint = value;
 				if(received_field_setpoint>=0 && received_field_setpoint<=100){
-					id_setpoint=-(received_field_setpoint/100.0f)*parameter_set.motor_nominal_current;
+					id_setpoint=(received_field_setpoint/100.0f)*parameter_set.motor_nominal_current;
 					modbus_registers_buffer[8]=received_field_setpoint;
 				}
 			}

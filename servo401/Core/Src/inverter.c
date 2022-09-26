@@ -114,11 +114,11 @@ void output_sine_pwm(float angle,uint16_t max_duty_cycle){
 		TIM1->CCR3=0;
 	}else{
 		sin_u=sinf(angle_rad);
-		sin_v=sinf(angle_rad+2.094395f);
+		sin_v=sinf(angle_rad+2.094395f);//120 deg offset
 		sin_w=sinf(angle_rad+4.1887902f);
-		TIM1->CCR1=(DUTY_CYCLE_LIMIT/2.0f)+sin_u*(max_duty_cycle/2.0f);
-		TIM1->CCR2=(DUTY_CYCLE_LIMIT/2.0f)+sin_v*(max_duty_cycle/2.0f);
-		TIM1->CCR3=(DUTY_CYCLE_LIMIT/2.0f)+sin_w*(max_duty_cycle/2.0f);
+		TIM1->CCR1=(DUTY_CYCLE_LIMIT/2.0f)-sin_u*(max_duty_cycle/2.0f);
+		TIM1->CCR2=(DUTY_CYCLE_LIMIT/2.0f)-sin_v*(max_duty_cycle/2.0f);
+		TIM1->CCR3=(DUTY_CYCLE_LIMIT/2.0f)-sin_w*(max_duty_cycle/2.0f);
 	}
 }
 
@@ -169,4 +169,16 @@ void output_svpwm(uint16_t angle,uint16_t max_duty_cycle){
 		break;
 	}
 	//HAL_GPIO_WritePin(GPIOB,GPIO_PIN_13,GPIO_PIN_RESET);
+}
+
+void output_inverse_park_transform(float U_alpha,float U_beta){
+	float U_U=2500.0f+(U_alpha/2.0f);
+	float U_V=2500.0f+(((-U_alpha)+(1.732f*U_beta))/4.0f);
+	float U_W=2500.0f+(((-U_alpha)-(1.732f*U_beta))/4.0f);
+	if(U_U>DUTY_CYCLE_LIMIT){U_U=DUTY_CYCLE_LIMIT;} //prevent timer from writing duty cycle over 100%
+	if(U_V>DUTY_CYCLE_LIMIT){U_V=DUTY_CYCLE_LIMIT;}
+	if(U_W>DUTY_CYCLE_LIMIT){U_W=DUTY_CYCLE_LIMIT;}
+	TIM1->CCR1=(uint32_t)U_U;
+	TIM1->CCR2=(uint32_t)U_V;
+	TIM1->CCR3=(uint32_t)U_W;
 }

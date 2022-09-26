@@ -25,8 +25,9 @@ void tamagawa_encoder_read_position(void){
 	tamagawa_encoder_data.last_encoder_position=ssi_encoder_data.encoder_position;
 	tamagawa_encoder_data.encoder_position=tamagawa_encoder_data.motor_data_response_packet[2] | tamagawa_encoder_data.motor_data_response_packet[3]<<8 | tamagawa_encoder_data.motor_data_response_packet[4]<<16;
 	//if(ssi_encoder_data.encoder_position>262143){ssi_encoder_data.encoder_position=ssi_encoder_data.last_encoder_position;}//@TODO:encoder error handling
+	//tamagawa_encoder_data.encoder_position=131072-tamagawa_encoder_data.encoder_position; //switch direction of encoder rotation
 	int32_t speed = tamagawa_encoder_data.last_encoder_position-tamagawa_encoder_data.encoder_position;
-	if(((speed>2000) && (speed<129000))||
+	if(((speed>2000) && (speed<129000))|| //may not work, not used not tested
 			((speed<(-2000)) && (speed>(-129000)))){
 		tamagawa_encoder_data.excessive_acceleration_error_count++;
 		if(tamagawa_encoder_data.excessive_acceleration_error_count>2){tamagawa_encoder_data.encoder_state=encoder_error_acceleration;}

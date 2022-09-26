@@ -57,13 +57,13 @@
 parameter_set_t parameter_set={
 		.motor_max_current=14.3f, //14.3 according to datasheet
 		.motor_nominal_current=5.3f,
-		.motor_pole_pairs=5, //4 for abb motor
+		.motor_pole_pairs=4, //4 for abb motor
 		.motor_max_voltage=150,
 		.motor_max_torque=7.17,
 		.motor_nominal_torque=2.39,
 		.motor_max_speed=3000,
-		.motor_feedback_type=abz_encoder,
-		.encoder_electric_angle_correction=-15,//-122 for abb motor
+		.motor_feedback_type=tamagawa_encoder,
+		.encoder_electric_angle_correction=0,
 		.encoder_resolution=5000,
 
 		.current_filter_ts=0.007,
@@ -110,7 +110,8 @@ volatile inverter_state_t inverter_state= stop;
 volatile float speed_setpoint_deg_s=0.0f; //speed in degrees/s
 volatile int16_t speed_setpoint_rpm=0;
 float motor_angle=0.0f;
-float electric_angle=0.0f;
+float electric_angle=0.0f; //stator voltage vector angle
+float electric_angle_setpoint=0.0f; //electric angle to set in manual mode
 volatile float duty_cycle=0.0f;
 const uint16_t duty_cycle_limit=DUTY_CYCLE_LIMIT;
 
@@ -565,8 +566,7 @@ void DMA2_Stream0_IRQHandler(void)
 					modbus_registers_buffer[11]=tamagawa_encoder_data.encoder_position/2; //encoder output is 17-bit but modbus register can hold only 16-bit
 					actual_electric_angle=(((fmodf(tamagawa_encoder_data.encoder_position, 131072.0f/(float)parameter_set.motor_pole_pairs))/(131072.0f/(float)parameter_set.motor_pole_pairs))*360.0f)+parameter_set.encoder_electric_angle_correction;
 					if(actual_electric_angle>=360.0f){actual_electric_angle-=360.0f;}
-					if(actual_electric_angle<0){actual_electric_angle+=360.0f;}
-
+					if(actual_electric_angle<0){actual_electric_angle+=360.0f;} //make sure to get 0-360 deg after correction
 					if(actual_electric_angle-electric_angle>180.0f){actual_torque_angle=(actual_electric_angle-electric_angle) - 360.0f;}
 					else if(actual_electric_angle-electric_angle<(-180.0f)){actual_torque_angle=actual_electric_angle-electric_angle + 360.0f;}
 					else{actual_torque_angle=actual_electric_angle-electric_angle;}
@@ -586,37 +586,43 @@ void DMA2_Stream0_IRQHandler(void)
 					modbus_registers_buffer[13]=(int16_t)(filtered_speed);
 				}
 
-				park_transform(I_U, I_V, 360.0f-actual_electric_angle, &I_d, &I_q); //360-electric angle is needed because for some reasons all encoders are going reverse direction than my electric angle generator
+				park_transform(I_U, I_V, actual_electric_angle, &I_d, &I_q);
 				I_d_filtered = LowPassFilter(parameter_set.current_filter_ts, I_d, &I_d_last);
 				I_q_filtered = LowPassFilter(parameter_set.current_filter_ts, I_q, &I_q_last);
 				modbus_registers_buffer[15]=(int16_t)(I_d_filtered*100);
 				modbus_registers_buffer[16]=(int16_t)(I_q_filtered*100);
 
 				if(control_mode==manual){
-					electric_angle+=(speed_setpoint_deg_s*(float)parameter_set.motor_pole_pairs)/5000.0f;  //5000hz control/sampling loop
-					if(electric_angle>=360.0f){	electric_angle=0.0f;}
-					if(electric_angle<0.0f){electric_angle=359.0f;}
+					electric_angle_setpoint+=(speed_setpoint_deg_s*(float)parameter_set.motor_pole_pairs)/5000.0f;  //5000hz control/sampling loop
+					if(electric_angle_setpoint>=360.0f){electric_angle_setpoint=0.0f;}
+					if(electric_angle_setpoint<0.0f){electric_angle_setpoint=359.0f;}
+					float electric_angle_setpoint_rad = (electric_angle_setpoint/180.0f)*3.141592f;
+					U_alpha=sinf(electric_angle_setpoint_rad)*duty_cycle;
+					U_beta=sinf(electric_angle_setpoint_rad+1.57079f)*duty_cycle;
+					if(inverter_state==run){
+						output_inverse_park_transform(U_alpha, U_beta);
+					}
+					else{TIM1->CCR1=0;TIM1->CCR2=0;TIM1->CCR3=0;}//if inverter in stop mode stop producing PWM signal while timer1 is still active to keep this interrupt alive for measurements on switched off inverter
+					//park_transform(U_alpha, U_beta, actual_electric_angle, &U_d, &U_q);
 				}
-				if(control_mode==foc && modbus_registers_buffer[3] ==1){
+				if(control_mode==foc){
 					U_d = PI_control(&id_current_controller_data, id_setpoint-I_d_filtered);
 					U_q = PI_control(&iq_current_controller_data,(torque_setpoint)-I_q_filtered);
 					inv_park_transform(U_d, U_q, actual_electric_angle, &U_alpha, &U_beta);
-					duty_cycle=sqrtf(U_alpha*U_alpha+U_beta*U_beta);
+					if(inverter_state==run){
+						output_inverse_park_transform(U_alpha, U_beta);
+					}
+					else{TIM1->CCR1=0;TIM1->CCR2=0;TIM1->CCR3=0;}//if inverter in stop mode stop producing PWM signal while timer1 is still active to keep this interrupt alive for measurements on switched off inverter
 
-					float electric_angle_rad=0.0f;
-					if(U_alpha>=0 && U_beta >=0){electric_angle_rad=atan2f(fabs(U_beta),fabs(U_alpha));}
-					if(U_alpha<0 && U_beta >=0){electric_angle_rad=atan2f(fabs(U_alpha),fabs(U_beta)) + (3.141592f/2.0f);}
-					if(U_alpha<0 && U_beta <0){electric_angle_rad=atan2f(fabs(U_beta),fabs(U_alpha)) + 3.141592f;}
-					if(U_alpha>=0 && U_beta <0){electric_angle_rad=atan2f(fabs(U_alpha),fabs(U_beta)) + (3.141592f*1.5f);}
-
-					electric_angle=(electric_angle_rad/3.141592f)*180.0f;
 				}
+				float temp_electric_angle_rad=0.0f;
+				if(U_alpha>=0 && U_beta >=0){temp_electric_angle_rad=atan2f(fabs(U_beta),fabs(U_alpha));}
+				if(U_alpha<0 && U_beta >=0){temp_electric_angle_rad=atan2f(fabs(U_alpha),fabs(U_beta)) + (3.141592f/2.0f);}
+				if(U_alpha<0 && U_beta <0){temp_electric_angle_rad=atan2f(fabs(U_beta),fabs(U_alpha)) + 3.141592f;}
+				if(U_alpha>=0 && U_beta <0){temp_electric_angle_rad=atan2f(fabs(U_alpha),fabs(U_beta)) + (3.141592f*1.5f);}
 
-				if(inverter_state==run){
-					//output_svpwm((uint16_t)electric_angle, (uint16_t)duty_cycle);
-					output_sine_pwm(electric_angle, (uint16_t)duty_cycle);
-				}
-				else{TIM1->CCR1=0;TIM1->CCR2=0;TIM1->CCR3=0;}//if inverter in stop mode stop producing PWM signal while timer1 is still active to keep this interrupt alive for measurements on switched off inverter
+				electric_angle=(temp_electric_angle_rad/3.141592f)*180.0f;
+
 
 			}
   /* USER CODE END DMA2_Stream0_IRQn 0 */

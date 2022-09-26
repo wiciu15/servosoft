@@ -10,7 +10,7 @@
 
 #include "parameter_set.h"
 
-#define INVERTER_OVERCURRENT_TRIP_LEVEL 11.0f  //overcurrrent trip setting level in Amperes
+#define INVERTER_OVERCURRENT_TRIP_LEVEL 5.0f  //overcurrrent trip setting level in Amperes
 #define INVERTER_OVERVOLTAGE_LEVEL 90.0f
 #define INVERTER_UNDERVOLTAGE_LEVEL 20.0f
 #define DUTY_CYCLE_LIMIT 4999
@@ -31,6 +31,7 @@ extern volatile float speed_setpoint_deg_s; //speed in degrees/s
 extern volatile int16_t speed_setpoint_rpm;
 extern float motor_angle;
 extern float electric_angle;
+extern float electric_angle_setpoint;
 extern volatile float duty_cycle;
 extern const uint16_t duty_cycle_limit;
 
@@ -86,5 +87,6 @@ float LowPassFilter(float Tf, float actual_measurement, float * last_filtered_va
 float get_sine_value(uint16_t angle);
 void output_sine_pwm(float angle,uint16_t max_duty_cycle);
 void output_svpwm(uint16_t angle,uint16_t max_duty_cycle);
+void output_inverse_park_transform(float U_alpha,float U_beta);
 
 #endif /* INC_INVERTER_H_ */

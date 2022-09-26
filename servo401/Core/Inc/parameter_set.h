@@ -20,6 +20,9 @@ typedef struct _parameter_set_t{
 	float motor_max_torque;
 	float motor_nominal_torque;
 	uint16_t motor_max_speed;
+	float motor_rs;
+	float motor_ls;
+	float motor_K;
 
 	motor_feedback_type_t motor_feedback_type;  //type of feedback
 	int16_t encoder_electric_angle_correction;  //correction of difference in electric angle calculated from encoder and electric angle of stator current. needed to achieve 90/-90 torque angle
