@@ -63,19 +63,19 @@ parameter_set_t parameter_set={
 		.motor_nominal_torque=2.39,
 		.motor_max_speed=3000,
 		.motor_feedback_type=tamagawa_encoder,
-		.encoder_electric_angle_correction=0,
+		.encoder_electric_angle_correction=90,
 		.encoder_resolution=5000,
 
 		.current_filter_ts=0.007,
-		.torque_current_ctrl_proportional_gain=2000.0f, //float torque_current_ctrl_integral_gain; --NOT USED-- if integral other than zero then unloaded motor will saturate the current controller integral gain and motor will generate torque even if commanded to 0 torque
-		.field_current_ctrl_proportional_gain=2000.0f,
+		.torque_current_ctrl_proportional_gain=7000.0f, //float torque_current_ctrl_integral_gain; --NOT USED-- if integral other than zero then unloaded motor will saturate the current controller integral gain and motor will generate torque even if commanded to 0 torque
+		.field_current_ctrl_proportional_gain=4000.0f,
 		.field_current_ctrl_integral_gain=1000.0f,
 
 		.speed_filter_ts=0.005,
 		.speed_controller_proportional_gain=0.06f,
 		.speed_controller_integral_gain=0.8f,
-		.speed_controller_output_torque_limit=50.0f, //limit torque, Id/10 is the output so the calcualtion is needed to convert N/m to A
-		.speed_controller_integral_limit=50.0f
+		.speed_controller_output_torque_limit=1.0f, //limit torque, Id is the output so the calcualtion is needed to convert N/m to A
+		.speed_controller_integral_limit=1.0f
 };
 
 volatile uint16_t ADC_rawdata[4];

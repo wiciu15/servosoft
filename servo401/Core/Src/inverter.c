@@ -60,8 +60,8 @@ void park_transform(float I_U,float I_V,float motor_angle,float * I_d,float * I_
 	float Ialfa=I_U;
 	float Ibeta=(0.5773502f * I_U) + (1.1547005f * I_V);
 	float motor_angle_rad = (motor_angle/180.0f)*3.141592f;
-	*I_q = (Ialfa * cosf(motor_angle_rad)) + (Ibeta * sinf(motor_angle_rad));
-	*I_d = (Ialfa * sinf(motor_angle_rad)*(-1)) + (Ibeta * cosf(motor_angle_rad));
+	*I_d = (Ialfa * cosf(motor_angle_rad)) + (Ibeta * sinf(motor_angle_rad));
+	*I_q = (Ialfa * sinf(motor_angle_rad)*(-1)) + (Ibeta * cosf(motor_angle_rad));
 }
 
 
