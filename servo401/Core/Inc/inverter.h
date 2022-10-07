@@ -84,9 +84,8 @@ void inverter_error_trip(uint8_t error);
 void park_transform(float I_U,float I_V,float motor_angle,float * I_d,float * I_q);
 void inv_park_transform(float U_d,float U_q, float motor_angle, float * U_alpha, float * U_beta);
 float LowPassFilter(float Tf, float actual_measurement, float * last_filtered_value);
-float get_sine_value(uint16_t angle);
-void output_sine_pwm(float angle,uint16_t max_duty_cycle);
-void output_svpwm(uint16_t angle,uint16_t max_duty_cycle);
+void output_sine_pwm(float angle,uint16_t duty_cycle);
+void output_svpwm(uint16_t angle,uint16_t duty_cycle);
 void output_inverse_park_transform(float U_alpha,float U_beta);
 
 #endif /* INC_INVERTER_H_ */

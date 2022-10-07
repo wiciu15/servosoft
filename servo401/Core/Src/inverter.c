@@ -79,32 +79,11 @@ float LowPassFilter(float Tf,float actual_measurement, float * last_filtered_val
 	return filtered_value;
 }
 
-float get_sine_value(uint16_t angle){
-	float sine=0.0f;
-	if(angle>=360){angle-=360;}
-	if(angle<0){angle+=360;}
-	uint8_t sector=angle/90;
-	switch (sector){
-	case 0:
-		sine=sine_table[angle];
-		break;
-	case 1:
-		sine=sine_table[90-(angle-90)];
-		break;
-	case 2:
-		sine=sine_table[angle-180]*(-1.0f);
-		break;
-	case 3:
-		sine=sine_table[90-(angle-270)]*(-1.0f);
-		break;
-	default:
-		sine=0;
-	}
-	return sine;
-}
 
-void output_sine_pwm(float angle,uint16_t max_duty_cycle){
+
+void output_sine_pwm(float angle,uint16_t duty_cycle){
 	float angle_rad = (angle/180.0f)*3.141592f;
+	uint16_t commanded_duty_cycle=duty_cycle;
 	float sin_u = 0;
 	float sin_v = 0;
 	float sin_w = 0;
@@ -113,27 +92,30 @@ void output_sine_pwm(float angle,uint16_t max_duty_cycle){
 		TIM1->CCR2=0;
 		TIM1->CCR3=0;
 	}else{
-		sin_u=sinf(angle_rad);
-		sin_v=sinf(angle_rad+2.094395f);//120 deg offset
-		sin_w=sinf(angle_rad+4.1887902f);
-		TIM1->CCR1=(DUTY_CYCLE_LIMIT/2.0f)-sin_u*(max_duty_cycle/2.0f);
-		TIM1->CCR2=(DUTY_CYCLE_LIMIT/2.0f)-sin_v*(max_duty_cycle/2.0f);
-		TIM1->CCR3=(DUTY_CYCLE_LIMIT/2.0f)-sin_w*(max_duty_cycle/2.0f);
+		if(commanded_duty_cycle>DUTY_CYCLE_LIMIT){commanded_duty_cycle=DUTY_CYCLE_LIMIT;}//prevent timer from writing duty cycle over 100%
+		sin_u=cosf(angle_rad);
+		sin_v=cosf(angle_rad-2.094395f);//120 deg offset
+		sin_w=cosf(angle_rad+2.094395f);
+		TIM1->CCR1=(DUTY_CYCLE_LIMIT/2.0f)+sin_u*(commanded_duty_cycle/2.0f);
+		TIM1->CCR2=(DUTY_CYCLE_LIMIT/2.0f)+sin_v*(commanded_duty_cycle/2.0f);
+		TIM1->CCR3=(DUTY_CYCLE_LIMIT/2.0f)+sin_w*(commanded_duty_cycle/2.0f);
 	}
 }
 
-void output_svpwm(uint16_t angle,uint16_t max_duty_cycle){
+void output_svpwm(uint16_t angle,uint16_t duty_cycle){
+	uint16_t commanded_duty_cycle=duty_cycle;
+	if(commanded_duty_cycle>DUTY_CYCLE_LIMIT){commanded_duty_cycle=DUTY_CYCLE_LIMIT;}//prevent timer from writing duty cycle over 100%
 	uint8_t sector=(angle/60)+1;
 	float t1=0.0f;
 	float t2=0.0f;
 	float t0=0.0f;
 	if(sector%2==1){
-		t1=t1calculated[angle%60]*(float)max_duty_cycle;
-		t2=t2calculated[angle%60]*(float)max_duty_cycle;
+		t1=t1calculated[angle%60]*(float)commanded_duty_cycle;
+		t2=t2calculated[angle%60]*(float)commanded_duty_cycle;
 		t0=((float)DUTY_CYCLE_LIMIT-t1-t2)/2.0f;
 	}else{
-		t1=t1calculated[60-(angle%60)]*(float)max_duty_cycle;
-		t2=t2calculated[60-(angle%60)]*(float)max_duty_cycle;
+		t1=t1calculated[60-(angle%60)]*(float)commanded_duty_cycle;
+		t2=t2calculated[60-(angle%60)]*(float)commanded_duty_cycle;
 		t0=((float)DUTY_CYCLE_LIMIT-t1-t2)/2.0f;
 	}
 	switch(sector){
@@ -168,10 +150,9 @@ void output_svpwm(uint16_t angle,uint16_t max_duty_cycle){
 		TIM1->CCR3=(uint32_t)t0+(uint32_t)t2;
 		break;
 	}
-	//HAL_GPIO_WritePin(GPIOB,GPIO_PIN_13,GPIO_PIN_RESET);
 }
 
-void output_inverse_park_transform(float U_alpha,float U_beta){
+void output_inverse_park_transform(float U_alpha,float U_beta){  //direct voltage output from inverse park transform, produce jagged current sine waves but useful for debugging
 	float U_U=2500.0f+(U_alpha/2.0f);
 	float U_V=2500.0f+(((-U_alpha)+(1.732f*U_beta))/4.0f);
 	float U_W=2500.0f+(((-U_alpha)-(1.732f*U_beta))/4.0f);

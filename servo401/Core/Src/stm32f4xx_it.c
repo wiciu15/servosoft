@@ -57,13 +57,13 @@
 parameter_set_t parameter_set={
 		.motor_max_current=14.3f, //14.3 according to datasheet
 		.motor_nominal_current=5.3f,
-		.motor_pole_pairs=4, //4 for abb motor
+		.motor_pole_pairs=5, //4 for abb motor 5 for bch
 		.motor_max_voltage=150,
 		.motor_max_torque=7.17,
 		.motor_nominal_torque=2.39,
 		.motor_max_speed=3000,
-		.motor_feedback_type=tamagawa_encoder,
-		.encoder_electric_angle_correction=90,
+		.motor_feedback_type=abz_encoder,
+		.encoder_electric_angle_correction=0, //-90 for abb 0 for bch
 		.encoder_resolution=5000,
 
 		.current_filter_ts=0.007,
@@ -113,6 +113,7 @@ float motor_angle=0.0f;
 float electric_angle=0.0f; //stator voltage vector angle
 float electric_angle_setpoint=0.0f; //electric angle to set in manual mode
 volatile float duty_cycle=0.0f;
+float calculated_duty_cycle=0.0f;
 const uint16_t duty_cycle_limit=DUTY_CYCLE_LIMIT;
 
 float U_DClink=0;
@@ -506,16 +507,12 @@ void DMA2_Stream0_IRQHandler(void)
 
 				if(parameter_set.motor_feedback_type==abz_encoder){
 					if(encoder_positioned){
-						if(TIM2->CNT <parameter_set.encoder_resolution){encoder_actual_position=parameter_set.encoder_resolution-TIM2->CNT;}
-						else{encoder_actual_position=parameter_set.encoder_resolution-TIM2->CNT;}
+						encoder_actual_position=parameter_set.encoder_resolution-TIM2->CNT; //flip direction of encoder
 						modbus_registers_buffer[11]=encoder_actual_position;
-						int16_t corrected_encoder_position=encoder_actual_position % (parameter_set.encoder_resolution/parameter_set.motor_pole_pairs);
-						if(corrected_encoder_position<0){corrected_encoder_position+=(parameter_set.encoder_resolution/parameter_set.motor_pole_pairs);}
-						actual_electric_angle=(float)(corrected_encoder_position)*0.36f-parameter_set.encoder_electric_angle_correction;
-						if(actual_electric_angle-electric_angle>180.0f){actual_torque_angle=(actual_electric_angle-electric_angle) - 360.0f;}
-						else if(actual_electric_angle-electric_angle<(-180.0f)){actual_torque_angle=actual_electric_angle-electric_angle + 360.0f;}
-						else{actual_torque_angle=actual_electric_angle-electric_angle;}
-						modbus_registers_buffer[12]=(int16_t)actual_torque_angle;//write calculated value to modbus array
+						actual_electric_angle=(float)(encoder_actual_position % (parameter_set.encoder_resolution/parameter_set.motor_pole_pairs))*0.36f-parameter_set.encoder_electric_angle_correction;  //calculate rotor electric angle
+						if(electric_angle-actual_electric_angle>180.0f){actual_torque_angle=(electric_angle-actual_electric_angle) - 360.0f;}
+						else if(electric_angle-actual_electric_angle<(-180.0f)){actual_torque_angle=electric_angle-actual_electric_angle + 360.0f;}
+						else{actual_torque_angle=electric_angle-actual_electric_angle;}modbus_registers_buffer[12]=(int16_t)actual_torque_angle;//write calculated value to modbus array
 						speed_measurement_loop_i++;
 						if(speed_measurement_loop_i>=10){
 							speed=((actual_electric_angle-last_actual_electric_angle)/parameter_set.motor_pole_pairs)/0.012f; //speed(rpm) = ((x(deg)/polepairs)/360deg)/(0,002(s)/60s)
@@ -567,9 +564,9 @@ void DMA2_Stream0_IRQHandler(void)
 					actual_electric_angle=(((fmodf(tamagawa_encoder_data.encoder_position, 131072.0f/(float)parameter_set.motor_pole_pairs))/(131072.0f/(float)parameter_set.motor_pole_pairs))*360.0f)+parameter_set.encoder_electric_angle_correction;
 					if(actual_electric_angle>=360.0f){actual_electric_angle-=360.0f;}
 					if(actual_electric_angle<0){actual_electric_angle+=360.0f;} //make sure to get 0-360 deg after correction
-					if(actual_electric_angle-electric_angle>180.0f){actual_torque_angle=(actual_electric_angle-electric_angle) - 360.0f;}
-					else if(actual_electric_angle-electric_angle<(-180.0f)){actual_torque_angle=actual_electric_angle-electric_angle + 360.0f;}
-					else{actual_torque_angle=actual_electric_angle-electric_angle;}
+					if(electric_angle-actual_electric_angle>180.0f){actual_torque_angle=(electric_angle-actual_electric_angle) - 360.0f;}
+					else if(electric_angle-actual_electric_angle<(-180.0f)){actual_torque_angle=electric_angle-actual_electric_angle + 360.0f;}
+					else{actual_torque_angle=electric_angle-actual_electric_angle;}
 					modbus_registers_buffer[12]=(int16_t)actual_torque_angle;//write calculated value to modbus array
 					speed_measurement_loop_i++;
 					if(speed_measurement_loop_i>=10){
@@ -586,43 +583,46 @@ void DMA2_Stream0_IRQHandler(void)
 					modbus_registers_buffer[13]=(int16_t)(filtered_speed);
 				}
 
+				//calculate id/iq vetors based on rotor angle calculation/estimation
 				park_transform(I_U, I_V, actual_electric_angle, &I_d, &I_q);
 				I_d_filtered = LowPassFilter(parameter_set.current_filter_ts, I_d, &I_d_last);
 				I_q_filtered = LowPassFilter(parameter_set.current_filter_ts, I_q, &I_q_last);
 				modbus_registers_buffer[15]=(int16_t)(I_d_filtered*100);
 				modbus_registers_buffer[16]=(int16_t)(I_q_filtered*100);
 
+				//calculate voltage vectors
 				if(control_mode==manual){
 					electric_angle_setpoint+=(speed_setpoint_deg_s*(float)parameter_set.motor_pole_pairs)/5000.0f;  //5000hz control/sampling loop
 					if(electric_angle_setpoint>=360.0f){electric_angle_setpoint=0.0f;}
 					if(electric_angle_setpoint<0.0f){electric_angle_setpoint=359.0f;}
-					float electric_angle_setpoint_rad = (electric_angle_setpoint/180.0f)*3.141592f;
-					U_alpha=sinf(electric_angle_setpoint_rad)*duty_cycle;
-					U_beta=sinf(electric_angle_setpoint_rad+1.57079f)*duty_cycle;
-					if(inverter_state==run){
-						output_inverse_park_transform(U_alpha, U_beta);
-					}
-					else{TIM1->CCR1=0;TIM1->CCR2=0;TIM1->CCR3=0;}//if inverter in stop mode stop producing PWM signal while timer1 is still active to keep this interrupt alive for measurements on switched off inverter
+					float electric_angle_setpoint_rad = ((electric_angle_setpoint)/180.0f)*3.141592f;
+					U_alpha=cosf(electric_angle_setpoint_rad)*duty_cycle;
+					U_beta=sinf(electric_angle_setpoint_rad)*duty_cycle;
 					//park_transform(U_alpha, U_beta, actual_electric_angle, &U_d, &U_q);
 				}
 				if(control_mode==foc){
 					U_d = PI_control(&id_current_controller_data, id_setpoint-I_d_filtered);
 					U_q = PI_control(&iq_current_controller_data,(torque_setpoint)-I_q_filtered);
 					inv_park_transform(U_d, U_q, actual_electric_angle, &U_alpha, &U_beta);
-					if(inverter_state==run){
-						output_inverse_park_transform(U_alpha, U_beta);
-					}
-					else{TIM1->CCR1=0;TIM1->CCR2=0;TIM1->CCR3=0;}//if inverter in stop mode stop producing PWM signal while timer1 is still active to keep this interrupt alive for measurements on switched off inverter
-
 				}
+
+				//calculate output vector angle in degrees
 				float temp_electric_angle_rad=0.0f;
-				if(U_alpha>=0 && U_beta >=0){temp_electric_angle_rad=atan2f(fabs(U_beta),fabs(U_alpha));}
-				if(U_alpha<0 && U_beta >=0){temp_electric_angle_rad=atan2f(fabs(U_alpha),fabs(U_beta)) + (3.141592f/2.0f);}
-				if(U_alpha<0 && U_beta <0){temp_electric_angle_rad=atan2f(fabs(U_beta),fabs(U_alpha)) + 3.141592f;}
-				if(U_alpha>=0 && U_beta <0){temp_electric_angle_rad=atan2f(fabs(U_alpha),fabs(U_beta)) + (3.141592f*1.5f);}
-
+				temp_electric_angle_rad=atan2f(U_beta,U_alpha);
+				if(temp_electric_angle_rad<0.0f){
+					temp_electric_angle_rad=3.1415f+(3.1415f+temp_electric_angle_rad); //convert value from +-180 deg to 0-360deg
+				}
 				electric_angle=(temp_electric_angle_rad/3.141592f)*180.0f;
+				calculated_duty_cycle=hypotf(U_alpha,U_beta);
 
+				//update voltages in TIM1 compare registers to output them to motor
+				if(inverter_state==run){
+					//output_svpwm((uint16_t)electric_angle, (uint16_t)calculated_duty_cycle);
+					output_sine_pwm(electric_angle, (uint16_t) calculated_duty_cycle);
+				}else{
+					//output_svpwm(0, 0); //svpwm produces vibrations at full speed and current ripple at low speeds
+					output_sine_pwm(0.0f, 0);
+				}
 
 			}
   /* USER CODE END DMA2_Stream0_IRQn 0 */
