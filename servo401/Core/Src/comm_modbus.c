@@ -57,7 +57,7 @@ uint16_t modbus_protocol_write(uint32_t la, uint16_t value)
 			break;
 		case 6: //speed setpoint in rpm
 		{int16_t received_speed=value;
-		if(control_mode==manual){
+		if(control_mode==manual || control_mode==open_loop_current){
 			if((received_speed)<=1000 && (received_speed)>=(-1000) ){speed_setpoint_deg_s = (float)received_speed*6.0f;}
 			modbus_registers_buffer[6]=(uint16_t)received_speed;
 		}
@@ -71,6 +71,15 @@ uint16_t modbus_protocol_write(uint32_t la, uint16_t value)
 			uint8_t received_duty_cycle_percent=value;
 			if(value<=100 && value>=0){duty_cycle = ((float)received_duty_cycle_percent/100.0f)*(float)duty_cycle_limit;}
 			modbus_registers_buffer[7]=duty_cycle;
+		}
+		if(control_mode==open_loop_current){
+			int16_t received_torque_setpoint = (int16_t)value;
+			if(received_torque_setpoint>=0 && received_torque_setpoint<=100){
+				if(speed_setpoint_rpm==0){
+					torque_setpoint=(received_torque_setpoint/100.0f)*parameter_set.motor_nominal_current;
+					modbus_registers_buffer[7]=(int16_t)torque_setpoint;
+				}
+			}
 		}
 		if(control_mode==foc){
 			int16_t received_torque_setpoint = (int16_t)value;

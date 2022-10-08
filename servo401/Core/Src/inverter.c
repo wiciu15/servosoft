@@ -56,12 +56,14 @@ void inverter_error_trip(inverter_error_t error){
 	modbus_registers_buffer[2]=error;
 }
 
-void park_transform(float I_U,float I_V,float motor_angle,float * I_d,float * I_q){
-	float Ialfa=I_U;
-	float Ibeta=(0.5773502f * I_U) + (1.1547005f * I_V);
+void clarke_transform(float I_U,float I_V,float * I_alpha,float * I_beta){
+	* I_alpha=I_U;
+	* I_beta=(0.5773502f * I_U) + (1.1547005f * I_V);
+}
+void park_transform(float I_alpha,float I_beta,float motor_angle,float * I_d,float * I_q){
 	float motor_angle_rad = (motor_angle/180.0f)*3.141592f;
-	*I_d = (Ialfa * cosf(motor_angle_rad)) + (Ibeta * sinf(motor_angle_rad));
-	*I_q = (Ialfa * sinf(motor_angle_rad)*(-1)) + (Ibeta * cosf(motor_angle_rad));
+	*I_d = (I_alpha * cosf(motor_angle_rad)) + (I_beta * sinf(motor_angle_rad));
+	*I_q = (I_alpha * sinf(motor_angle_rad)*(-1)) + (I_beta * cosf(motor_angle_rad));
 }
 
 
@@ -152,7 +154,7 @@ void output_svpwm(uint16_t angle,uint16_t duty_cycle){
 	}
 }
 
-void output_inverse_park_transform(float U_alpha,float U_beta){  //direct voltage output from inverse park transform, produce jagged current sine waves but useful for debugging
+void output_inverse_clarke_transform(float U_alpha,float U_beta){  //direct voltage output from inverse park transform, produce jagged current sine waves but useful for debugging
 	float U_U=2500.0f+(U_alpha/2.0f);
 	float U_V=2500.0f+(((-U_alpha)+(1.732f*U_beta))/4.0f);
 	float U_W=2500.0f+(((-U_alpha)-(1.732f*U_beta))/4.0f);

@@ -145,6 +145,8 @@ volatile float I_V_RMS=0;
 volatile float I_W_RMS=0;
 volatile float I_out=0;
 
+float I_alpha=0.0f;
+float I_beta=0.0f;
 float I_d=0.0f;
 float I_d_last=0.0f;
 float I_d_filtered=0.0f;
@@ -584,7 +586,9 @@ void DMA2_Stream0_IRQHandler(void)
 				}
 
 				//calculate id/iq vetors based on rotor angle calculation/estimation
-				park_transform(I_U, I_V, actual_electric_angle, &I_d, &I_q);
+				clarke_transform(I_U, I_V, &I_alpha, &I_beta);
+				if(control_mode==manual||control_mode==foc){park_transform(I_alpha, I_beta, actual_electric_angle, &I_d, &I_q);} //in manual mode calculates id/iq for read only if encoder available, in FOC uses id/iq for closed loop motor control
+				if(control_mode==open_loop_current){park_transform(I_alpha, I_beta, electric_angle_setpoint, &I_d, &I_q);} //angle for park transform is given from stator voltage angle setpoint, which switches id/iq current
 				I_d_filtered = LowPassFilter(parameter_set.current_filter_ts, I_d, &I_d_last);
 				I_q_filtered = LowPassFilter(parameter_set.current_filter_ts, I_q, &I_q_last);
 				modbus_registers_buffer[15]=(int16_t)(I_d_filtered*100);
@@ -599,6 +603,15 @@ void DMA2_Stream0_IRQHandler(void)
 					U_alpha=cosf(electric_angle_setpoint_rad)*duty_cycle;
 					U_beta=sinf(electric_angle_setpoint_rad)*duty_cycle;
 					//park_transform(U_alpha, U_beta, actual_electric_angle, &U_d, &U_q);
+				}
+				//motor angle for park transform is given from stator angle setpoint in open loop current mode, then id/iq will switch places and torque setpoint will magnetize the rotor, field setpoint must be 0 to NOT generate torque
+				if(control_mode==open_loop_current){
+					electric_angle_setpoint+=(speed_setpoint_deg_s*(float)parameter_set.motor_pole_pairs)/5000.0f;  //5000hz control/sampling loop
+					if(electric_angle_setpoint>=360.0f){electric_angle_setpoint=0.0f;}
+					if(electric_angle_setpoint<0.0f){electric_angle_setpoint=359.0f;}
+					U_q = PI_control(&iq_current_controller_data,torque_setpoint-I_q_filtered);
+					U_d = PI_control(&id_current_controller_data,0-I_d_filtered);
+					inv_park_transform(U_d, U_q, electric_angle_setpoint, &U_alpha, &U_beta);
 				}
 				if(control_mode==foc){
 					U_d = PI_control(&id_current_controller_data, id_setpoint-I_d_filtered);

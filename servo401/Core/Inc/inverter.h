@@ -19,7 +19,7 @@
 
 typedef enum {no_error,undervoltage,overvoltage,shortcircuit,inverter_overcurrent,motor_overcurrent,encoder_error,internal_hardfault}inverter_error_t;
 typedef enum {stop,run,inhibit,trip}inverter_state_t;
-typedef enum {manual,scalar,foc}control_mode_t;
+typedef enum {manual,open_loop_current,foc}control_mode_t;
 
 
 extern parameter_set_t parameter_set;
@@ -81,11 +81,12 @@ extern float last_filtered_actual_speed;
 void inverter_enable(void);
 void inverter_disable(void);
 void inverter_error_trip(uint8_t error);
-void park_transform(float I_U,float I_V,float motor_angle,float * I_d,float * I_q);
+void clarke_transform(float I_U,float I_V,float * I_alpha,float * I_beta);
+void park_transform(float I_alpha,float I_beta,float motor_angle,float * I_d,float * I_q);
 void inv_park_transform(float U_d,float U_q, float motor_angle, float * U_alpha, float * U_beta);
 float LowPassFilter(float Tf, float actual_measurement, float * last_filtered_value);
 void output_sine_pwm(float angle,uint16_t duty_cycle);
 void output_svpwm(uint16_t angle,uint16_t duty_cycle);
-void output_inverse_park_transform(float U_alpha,float U_beta);
+void output_inverse_clarke_transform(float U_alpha,float U_beta);
 
 #endif /* INC_INVERTER_H_ */
