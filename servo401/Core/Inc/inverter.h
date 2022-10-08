@@ -10,7 +10,7 @@
 
 #include "parameter_set.h"
 
-#define INVERTER_OVERCURRENT_TRIP_LEVEL 11.0f  //overcurrrent trip setting level in Amperes
+#define INVERTER_OVERCURRENT_TRIP_LEVEL 5.0f  //overcurrrent trip setting level in Amperes
 #define INVERTER_OVERVOLTAGE_LEVEL 90.0f
 #define INVERTER_UNDERVOLTAGE_LEVEL 20.0f
 #define DUTY_CYCLE_LIMIT 4999
@@ -19,7 +19,7 @@
 
 typedef enum {no_error,undervoltage,overvoltage,shortcircuit,inverter_overcurrent,motor_overcurrent,encoder_error,internal_hardfault}inverter_error_t;
 typedef enum {stop,run,inhibit,trip}inverter_state_t;
-typedef enum {manual,scalar,foc}control_mode_t;
+typedef enum {manual,open_loop_current,foc}control_mode_t;
 
 
 extern parameter_set_t parameter_set;
@@ -31,6 +31,7 @@ extern volatile float speed_setpoint_deg_s; //speed in degrees/s
 extern volatile int16_t speed_setpoint_rpm;
 extern float motor_angle;
 extern float electric_angle;
+extern float electric_angle_setpoint;
 extern volatile float duty_cycle;
 extern const uint16_t duty_cycle_limit;
 
@@ -80,11 +81,12 @@ extern float last_filtered_actual_speed;
 void inverter_enable(void);
 void inverter_disable(void);
 void inverter_error_trip(uint8_t error);
-void park_transform(float I_U,float I_V,float motor_angle,float * I_d,float * I_q);
+void clarke_transform(float I_U,float I_V,float * I_alpha,float * I_beta);
+void park_transform(float I_alpha,float I_beta,float motor_angle,float * I_d,float * I_q);
 void inv_park_transform(float U_d,float U_q, float motor_angle, float * U_alpha, float * U_beta);
 float LowPassFilter(float Tf, float actual_measurement, float * last_filtered_value);
-float get_sine_value(uint16_t angle);
-void output_sine_pwm(float angle,uint16_t max_duty_cycle);
-void output_svpwm(uint16_t angle,uint16_t max_duty_cycle);
+void output_sine_pwm(float angle,uint16_t duty_cycle);
+void output_svpwm(uint16_t angle,uint16_t duty_cycle);
+void output_inverse_clarke_transform(float U_alpha,float U_beta);
 
 #endif /* INC_INVERTER_H_ */
