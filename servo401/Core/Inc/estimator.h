@@ -13,15 +13,19 @@ typedef struct _estimator_t {
 	float prev_Ibeta;
 	float dIalpha;
 	float dIbeta;
+	float prev_U_alpha;
 	float bemf_alpha;
 	float bemf_beta;
 	float U_d; //estimated d voltage calculated based on estimated angle
 	float U_q;
 	float estim_speed;
+	float estim_speed_rpm;
 	float estim_angle_sum; //integrated value
 	float estim_angle; //estimated angle in rad
+	float estim_angle_deg; //estimated angle in deg
 	float estim_angle_abs;//absolute value of angle, no matter what direction of rotation
 }estimator_t;
 
+extern estimator_t estimator;
 void calculateBEMF(estimator_t * estimator, float Ialpha, float Ibeta, float Ualpha, float Ubeta);
 #endif /* INC_ESTIMATOR_H_ */

@@ -33,6 +33,7 @@
 #include "mitsubishi_encoder.h"
 #include "tamagawa_encoder.h"
 #include "parameter_set.h"
+#include "estimator.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -62,6 +63,9 @@ parameter_set_t parameter_set={
 		.motor_max_torque=7.17,
 		.motor_nominal_torque=2.39,
 		.motor_max_speed=3000,
+		.motor_rs=0.42,
+		.motor_ls=0.00353, //winding inducatnce in H
+		.motor_K=17.2,  //electical constant in V/1000RPM
 		.motor_feedback_type=abz_encoder,
 		.encoder_electric_angle_correction=0, //-90 for abb 0 for bch
 		.encoder_resolution=5000,
@@ -112,6 +116,7 @@ volatile int16_t speed_setpoint_rpm=0;
 float motor_angle=0.0f;
 float electric_angle=0.0f; //stator voltage vector angle
 float electric_angle_setpoint=0.0f; //electric angle to set in manual mode
+float dc_link_to_duty_cycle_ratio=0.0f;
 volatile float duty_cycle=0.0f;
 float calculated_duty_cycle=0.0f;
 const uint16_t duty_cycle_limit=DUTY_CYCLE_LIMIT;
@@ -473,6 +478,7 @@ void DMA2_Stream0_IRQHandler(void)
 				//DC link voltage
 				U_DClink = (float)ADC_rawdata[2]*0.0250945f;
 				U_DClink_filtered = LowPassFilter(0.01f, U_DClink, &U_DClink_last);
+				dc_link_to_duty_cycle_ratio=DUTY_CYCLE_LIMIT/U_DClink_filtered;
 				if(U_DClink_filtered>INVERTER_OVERVOLTAGE_LEVEL && OV_measurement_error_counter<2){if(OV_measurement_error_counter==1){inverter_error_trip(overvoltage);}OV_measurement_error_counter++;}else{OV_measurement_error_counter=0;}
 				if(U_DClink_filtered<INVERTER_UNDERVOLTAGE_LEVEL && UV_measurement_error_counter<2){if(UV_measurement_error_counter==1){inverter_error_trip(undervoltage);}UV_measurement_error_counter++;}else{UV_measurement_error_counter=0;} //2 measurements under a treshold must happen in a row
 				modbus_registers_buffer[14] = (uint16_t)(U_DClink_filtered*10.0f);
@@ -618,6 +624,7 @@ void DMA2_Stream0_IRQHandler(void)
 					U_q = PI_control(&iq_current_controller_data,(torque_setpoint)-I_q_filtered);
 					inv_park_transform(U_d, U_q, actual_electric_angle, &U_alpha, &U_beta);
 				}
+				calculateBEMF(&estimator, I_alpha, I_beta, U_alpha, U_beta);
 
 				//calculate output vector angle in degrees
 				float temp_electric_angle_rad=0.0f;
