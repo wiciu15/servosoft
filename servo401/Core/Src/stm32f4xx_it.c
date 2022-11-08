@@ -58,24 +58,25 @@
 parameter_set_t parameter_set={
 		.motor_max_current=14.3f, //14.3 according to datasheet
 		.motor_nominal_current=5.3f,
-		.motor_pole_pairs=5, //4 for abb motor 5 for bch
-		.motor_max_voltage=150,
-		.motor_max_torque=7.17,
-		.motor_nominal_torque=2.39,
+		.motor_pole_pairs=4, //4 for abb motor 5 for bch
+		.motor_max_voltage=150.0f,
+		.motor_max_torque=7.17f,
+		.motor_nominal_torque=2.39f,
 		.motor_max_speed=3000,
-		.motor_rs=0.42,
-		.motor_ls=0.00353, //winding inducatnce in H
-		.motor_K=17.2,  //electical constant in V/1000RPM
-		.motor_feedback_type=abz_encoder,
-		.encoder_electric_angle_correction=0, //-90 for abb 0 for bch
+		.motor_rs=0.42f,
+		.motor_ls=0.00353f, //winding inducatnce in H
+		.motor_K=0.03288f,  //electical constant in V/(rad/s*pole_pairs) 1000RPM=104.719rad/s
+		.motor_feedback_type=tamagawa_encoder,
+		.encoder_electric_angle_correction=-90, //-90 for abb 0 for bch
 		.encoder_resolution=5000,
 
-		.current_filter_ts=0.007,
-		.torque_current_ctrl_proportional_gain=7000.0f, //float torque_current_ctrl_integral_gain; --NOT USED-- if integral other than zero then unloaded motor will saturate the current controller integral gain and motor will generate torque even if commanded to 0 torque
-		.field_current_ctrl_proportional_gain=4000.0f,
-		.field_current_ctrl_integral_gain=1000.0f,
+		.current_filter_ts=0.013f,
+		.torque_current_ctrl_proportional_gain=30.0f, //gain in V/A
+		.torque_current_ctrl_integral_gain=1200.0f, //
+		.field_current_ctrl_proportional_gain=30.0f,
+		.field_current_ctrl_integral_gain=600.0f,
 
-		.speed_filter_ts=0.005,
+		.speed_filter_ts=0.005f,
 		.speed_controller_proportional_gain=0.06f,
 		.speed_controller_integral_gain=0.8f,
 		.speed_controller_output_torque_limit=1.0f, //limit torque, Id is the output so the calcualtion is needed to convert N/m to A
@@ -87,15 +88,15 @@ volatile uint16_t ADC_rawdata[4];
  PID_t id_current_controller_data = {
 		0.0f,
 		0.0f,
-		DUTY_CYCLE_LIMIT,DUTY_CYCLE_LIMIT,
+		0.0f,0.0f,
 		2E-04f,
 		0.0f,0.0f,0.0f,0.0f
 };
  PID_t iq_current_controller_data = {
 		 0.0f,
 		0.0f,
-		DUTY_CYCLE_LIMIT,
-		DUTY_CYCLE_LIMIT,
+		0.0f,
+		0.0f,
 		2E-04f,
 		0.0f,0.0f,0.0f,0.0f
 };
@@ -121,9 +122,9 @@ volatile float duty_cycle=0.0f;
 float calculated_duty_cycle=0.0f;
 const uint16_t duty_cycle_limit=DUTY_CYCLE_LIMIT;
 
-float U_DClink=0;
-float U_DClink_last=0;
-float U_DClink_filtered=0;
+float U_DClink=0.0f;
+float U_DClink_last=0.0f;
+float U_DClink_filtered=0.0f;
 
 uint8_t measurement_error_counter=0;
 uint8_t OC_measurement_error_counter=0;
@@ -142,13 +143,13 @@ volatile float I_U=0.0f;
 volatile float I_V=0.0f;
 volatile float I_W=0.0f;
 volatile uint16_t rms_count=0;
-volatile float I_U_square_sum=0;
-volatile float I_V_square_sum=0;
-volatile float I_W_square_sum=0;
-volatile float I_U_RMS=0;
-volatile float I_V_RMS=0;
-volatile float I_W_RMS=0;
-volatile float I_out=0;
+volatile float I_U_square_sum=0.0f;
+volatile float I_V_square_sum=0.0f;
+volatile float I_W_square_sum=0.0f;
+volatile float I_U_RMS=0.0f;
+volatile float I_V_RMS=0.0f;
+volatile float I_W_RMS=0.0f;
+volatile float I_out=0.0f;
 
 float I_alpha=0.0f;
 float I_beta=0.0f;
@@ -172,7 +173,7 @@ int16_t encoder_correction_angle=-122; //offset in degrees between encoder 0 pos
 float actual_electric_angle=0.0f;
 float last_actual_electric_angle=0.0f;
 float actual_torque_angle=0.0f;
-motor_feedback_type_t motor_feedback_type=tamagawa_encoder;
+//motor_feedback_type_t motor_feedback_type=tamagawa_encoder;
 
 float speed_measurement_loop_i=0;
 float speed=0.0f;
@@ -457,7 +458,12 @@ void DMA2_Stream0_IRQHandler(void)
 	//update pi controllers parameters from parameter set
 	id_current_controller_data.proportional_gain=parameter_set.field_current_ctrl_proportional_gain;
 	id_current_controller_data.integral_gain=parameter_set.field_current_ctrl_integral_gain;
+	id_current_controller_data.antiwindup_limit=U_DClink_filtered;
+	id_current_controller_data.output_limit=U_DClink_filtered;
 	iq_current_controller_data.proportional_gain=parameter_set.torque_current_ctrl_proportional_gain;
+	iq_current_controller_data.integral_gain=parameter_set.torque_current_ctrl_integral_gain;
+	iq_current_controller_data.antiwindup_limit=U_DClink_filtered;
+	iq_current_controller_data.output_limit=U_DClink_filtered;
 	speed_controller_data.proportional_gain=parameter_set.speed_controller_proportional_gain;
 	speed_controller_data.integral_gain=parameter_set.speed_controller_integral_gain;
 	speed_controller_data.antiwindup_limit=parameter_set.motor_nominal_current;
@@ -606,12 +612,12 @@ void DMA2_Stream0_IRQHandler(void)
 					if(electric_angle_setpoint>=360.0f){electric_angle_setpoint=0.0f;}
 					if(electric_angle_setpoint<0.0f){electric_angle_setpoint=359.0f;}
 					float electric_angle_setpoint_rad = ((electric_angle_setpoint)/180.0f)*3.141592f;
-					U_alpha=cosf(electric_angle_setpoint_rad)*duty_cycle;
-					U_beta=sinf(electric_angle_setpoint_rad)*duty_cycle;
+					U_alpha=cosf(electric_angle_setpoint_rad)*(duty_cycle/dc_link_to_duty_cycle_ratio);
+					U_beta=sinf(electric_angle_setpoint_rad)*(duty_cycle/dc_link_to_duty_cycle_ratio);
 					//park_transform(U_alpha, U_beta, actual_electric_angle, &U_d, &U_q);
 				}
 				//motor angle for park transform is given from stator angle setpoint in open loop current mode, then id/iq will switch places and torque setpoint will magnetize the rotor, field setpoint must be 0 to NOT generate torque
-				if(control_mode==open_loop_current){
+				if(control_mode==open_loop_current && inverter_state==run){
 					electric_angle_setpoint+=(speed_setpoint_deg_s*(float)parameter_set.motor_pole_pairs)/5000.0f;  //5000hz control/sampling loop
 					if(electric_angle_setpoint>=360.0f){electric_angle_setpoint=0.0f;}
 					if(electric_angle_setpoint<0.0f){electric_angle_setpoint=359.0f;}
@@ -619,7 +625,7 @@ void DMA2_Stream0_IRQHandler(void)
 					U_d = PI_control(&id_current_controller_data,0-I_d_filtered);
 					inv_park_transform(U_d, U_q, electric_angle_setpoint, &U_alpha, &U_beta);
 				}
-				if(control_mode==foc){
+				if(control_mode==foc && inverter_state==run){
 					U_d = PI_control(&id_current_controller_data, id_setpoint-I_d_filtered);
 					U_q = PI_control(&iq_current_controller_data,(torque_setpoint)-I_q_filtered);
 					inv_park_transform(U_d, U_q, actual_electric_angle, &U_alpha, &U_beta);
@@ -633,8 +639,17 @@ void DMA2_Stream0_IRQHandler(void)
 					temp_electric_angle_rad=3.1415f+(3.1415f+temp_electric_angle_rad); //convert value from +-180 deg to 0-360deg
 				}
 				electric_angle=(temp_electric_angle_rad/3.141592f)*180.0f;
-				calculated_duty_cycle=hypotf(U_alpha,U_beta);
+				calculated_duty_cycle=hypotf(U_alpha,U_beta)*dc_link_to_duty_cycle_ratio;
 
+				//reset pid controllers data for next startup if stopped at speed/torque !=0. This avoids high Ud/Uq voltage output at startup
+				if(inverter_state!=run){
+					iq_current_controller_data.last_integral=0.0f;
+					iq_current_controller_data.last_error=0.0f;
+					iq_current_controller_data.last_output=0.0f;
+					id_current_controller_data.last_integral=0.0f;
+					id_current_controller_data.last_error=0.0f;
+					id_current_controller_data.last_output=0.0f;
+				}
 				//update voltages in TIM1 compare registers to output them to motor
 				if(inverter_state==run){
 					//output_svpwm((uint16_t)electric_angle, (uint16_t)calculated_duty_cycle);

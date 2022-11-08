@@ -30,6 +30,7 @@ typedef struct _parameter_set_t{
 
 	float current_filter_ts; //measured Id/Iq-low pass filter time constant for torque regulator
 	float torque_current_ctrl_proportional_gain; //float torque_current_ctrl_integral_gain; --NOT USED-- if integral other than zero then unloaded motor will saturate the current controller integral gain and motor will generate torque even if commanded to 0 torque
+	float torque_current_ctrl_integral_gain;
 	float field_current_ctrl_proportional_gain;
 	float field_current_ctrl_integral_gain;
 

@@ -40,8 +40,8 @@ void calculateBEMF(estimator_t * estimator, float Ialpha, float Ibeta, float Ual
 	estimator->bemf_alpha=Ualpha-(parameter_set.motor_rs*Ialpha)-(parameter_set.motor_ls*(estimator->dIalpha/estimator->sampling_time));
 	estimator->bemf_beta=Ubeta-(parameter_set.motor_rs*Ibeta)-(parameter_set.motor_ls*(estimator->dIbeta/estimator->sampling_time));
 
-	estimator->U_q=(estimator->bemf_alpha*cosf(estimator->estim_angle))+(estimator->bemf_beta*sinf(estimator->estim_angle));
-	estimator->U_d=(-estimator->bemf_alpha*sinf(estimator->estim_angle))+(estimator->bemf_beta*cosf(estimator->estim_angle));
+	estimator->U_d=(estimator->bemf_alpha*cosf(estimator->estim_angle))+(estimator->bemf_beta*sinf(estimator->estim_angle));
+	estimator->U_q=(estimator->bemf_beta*cosf(estimator->estim_angle))-(estimator->bemf_alpha*sinf(estimator->estim_angle));
 
 	if(estimator->U_q>=0){
 		estimator->estim_speed=(estimator->U_q+estimator->U_d)/parameter_set.motor_K;
@@ -50,7 +50,7 @@ void calculateBEMF(estimator_t * estimator, float Ialpha, float Ibeta, float Ual
 	}
 	estimator->estim_speed_rpm=(estimator->estim_speed*9.549297)/parameter_set.motor_pole_pairs;
 
-	estimator->estim_angle_sum+=estimator->estim_speed*0.0002f;  //overflow of sum not handled!!!
+	estimator->estim_angle_sum+=estimator->estim_speed*0.0002f;
 	estimator->estim_angle=fmodf(estimator->estim_angle_sum,6.28f);
 	estimator->estim_angle_deg=(estimator->estim_angle*180.0f)/3.14159f;
 	//estimator->estim_angle_abs=fabs(estimator->estim_angle);
