@@ -11,7 +11,9 @@ void motor_identification(void){
 	uint8_t command = 0x92;
 	for(uint8_t i=0;i<10;i++){
 		if(i>2){command=0x7A;}
+		HAL_GPIO_WritePin(GPIOC,GPIO_PIN_13, 1);
 		HAL_UART_Transmit(&huart2, &command, 1, 100);
+		HAL_GPIO_WritePin(GPIOC,GPIO_PIN_13, 0);
 		osDelay(1);
 		HAL_UART_Receive_DMA(&huart2, UART2_RX_raw, 9);
 		osDelay(1);
@@ -23,13 +25,16 @@ void motor_identification(void){
 		//determine motor family and encoder resolution
 		if(UART2_RX_raw[2]==0x41){ssi_encoder_data.encoder_resolution=p131072ppr;ssi_encoder_data.motor_family=j2super;}
 		else if(UART2_RX_raw[2]==0x3D){ssi_encoder_data.encoder_resolution=p8192ppr;ssi_encoder_data.motor_family=j2;}
-		else{ssi_encoder_data.encoder_resolution=unknown_resolution;ssi_encoder_data.motor_family=unknown_family;}
+		else if(UART2_RX_raw[2]==75){ssi_encoder_data.encoder_resolution=p131072ppr;ssi_encoder_data.motor_family=hf;}
+		else{ssi_encoder_data.encoder_resolution=p131072ppr;ssi_encoder_data.motor_family=unknown_family;}
 		//determine form factor
 		switch(UART2_RX_raw[3]){
 		case 0x12:
 			ssi_encoder_data.motor_formfactor=kf;break;
 		case 0x02:
 			ssi_encoder_data.motor_formfactor=mf;break;
+		case 0x0F:
+			ssi_encoder_data.motor_formfactor=kn;break;
 		default:
 			ssi_encoder_data.motor_formfactor=unknown_formfactor;break;
 		}

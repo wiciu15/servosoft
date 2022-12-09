@@ -13,8 +13,8 @@
 
 typedef enum  {encoder_ok, encoder_error_cheksum, encoder_error_acceleration, encoder_error_no_communication,encoder_error_uart_busy}encoder_state_t;
 typedef enum  {unknown_resolution,p8192ppr,p131072ppr}encoder_resolution_t;
-typedef enum  {unknown_family,j2,j2super}motor_family_t;
-typedef enum  {unknown_formfactor,mf,kf}motor_formfactor_t;
+typedef enum  {unknown_family,j2,j2super,hf}motor_family_t;
+typedef enum  {unknown_formfactor,mf,kf,kn}motor_formfactor_t;
 typedef struct _ssi_encoder_data_t {
 	encoder_state_t encoder_state;
 	uint32_t encoder_position;

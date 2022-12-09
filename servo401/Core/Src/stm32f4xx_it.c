@@ -56,9 +56,9 @@
 
 //DEFAULT PARAMETER SET FROM DRIVE ROM, values would reset between restarts, @TODO: read and write parameter set from flash on boot
 parameter_set_t parameter_set={
-		.motor_max_current=14.3f, //14.3 according to datasheet
-		.motor_nominal_current=5.3f,
-		.motor_pole_pairs=4, //4 for abb motor 5 for bch
+		.motor_max_current=8.0f, //14.3 according to datasheet
+		.motor_nominal_current=2.7f,
+		.motor_pole_pairs=5, //4 for abb motor 5 for bch and mitsubishi hf-kn43
 		.motor_max_voltage=150.0f,
 		.motor_max_torque=7.17f,
 		.motor_nominal_torque=2.39f,
@@ -66,8 +66,8 @@ parameter_set_t parameter_set={
 		.motor_rs=0.42f,
 		.motor_ls=0.00353f, //winding inducatnce in H
 		.motor_K=0.03288f,  //electical constant in V/(rad/s*pole_pairs) 1000RPM=104.719rad/s
-		.motor_feedback_type=tamagawa_encoder,
-		.encoder_electric_angle_correction=-90, //-90 for abb BSM, 0 for bch, 0 for abb esm18
+		.motor_feedback_type=ssi_encoder,
+		.encoder_electric_angle_correction=60, //-90 for abb BSM, 0 for bch, 0 for abb esm18, 60 for hf-kn43
 		.encoder_resolution=5000,
 
 		.current_filter_ts=0.013f,
@@ -77,8 +77,8 @@ parameter_set_t parameter_set={
 		.field_current_ctrl_integral_gain=600.0f,
 
 		.speed_filter_ts=0.005f,
-		.speed_controller_proportional_gain=0.011f,
-		.speed_controller_integral_gain=0.3f,
+		.speed_controller_proportional_gain=0.006f,
+		.speed_controller_integral_gain=0.15f,
 		.speed_controller_output_torque_limit=1.0f, //limit torque, Id is the output so the calcualtion is needed to convert N/m to A
 		.speed_controller_integral_limit=1.0f
 };
@@ -377,6 +377,7 @@ void TIM3_IRQHandler(void)
   /* USER CODE BEGIN TIM3_IRQn 0 */
 	HAL_ADC_Start_DMA(&hadc1, ADC_rawdata, 4);
 	if(parameter_set.motor_feedback_type==tamagawa_encoder){tamagawa_encoder_read_position();}
+	if(parameter_set.motor_feedback_type==ssi_encoder){motor_encoder_read_position();}
 	HAL_GPIO_WritePin(DISP_LATCH_GPIO_Port, DISP_LATCH_Pin, 1);
 
   /* USER CODE END TIM3_IRQn 0 */
@@ -540,37 +541,37 @@ void DMA2_Stream0_IRQHandler(void)
 					}
 				}
 				if(parameter_set.motor_feedback_type==ssi_encoder){
-					modbus_registers_buffer[11]=ssi_encoder_data.encoder_position;
+
 					if(ssi_encoder_data.encoder_resolution==p8192ppr){
+						modbus_registers_buffer[11]=ssi_encoder_data.encoder_position;
 						actual_electric_angle=(((fmodf(ssi_encoder_data.encoder_position, 8192.0f/(float)parameter_set.motor_pole_pairs))/(8192.0f/(float)parameter_set.motor_pole_pairs))*360.0f)+parameter_set.encoder_electric_angle_correction;
 						if(actual_electric_angle>=360.0f){actual_electric_angle-=360.0f;}
 						if(actual_electric_angle<0){actual_electric_angle+=360.0f;}
 					}
 					if(ssi_encoder_data.encoder_resolution==p131072ppr){
-						//not verified if working with 17bit, no compatible motor to test :(
-						actual_electric_angle=(((fmodf(ssi_encoder_data.encoder_position,8192.0f/(float)parameter_set.motor_pole_pairs))/(131072.0f/(float)parameter_set.motor_pole_pairs))*360.0f)+parameter_set.encoder_electric_angle_correction;
+						modbus_registers_buffer[11]=ssi_encoder_data.encoder_position/2;
+						actual_electric_angle=(((fmodf(ssi_encoder_data.encoder_position,131072.0f/(float)parameter_set.motor_pole_pairs))/(131072.0f/(float)parameter_set.motor_pole_pairs))*360.0f)+parameter_set.encoder_electric_angle_correction;
 						if(actual_electric_angle>=360.0f){actual_electric_angle-=360.0f;}
 						if(actual_electric_angle<0){actual_electric_angle+=360.0f;}
 					}
 					if(ssi_encoder_data.encoder_resolution==unknown_resolution){actual_electric_angle=0;}//@TODO: encoder error trip
-					if(actual_electric_angle-electric_angle>180.0f){actual_torque_angle=(actual_electric_angle-electric_angle) - 360.0f;}
-					else if(actual_electric_angle-electric_angle<(-180.0f)){actual_torque_angle=actual_electric_angle-electric_angle + 360.0f;}
-					else{actual_torque_angle=actual_electric_angle-electric_angle;}
+					if(electric_angle-actual_electric_angle>180.0f){actual_torque_angle=(electric_angle-actual_electric_angle) - 360.0f;}
+					else if(electric_angle-actual_electric_angle<(-180.0f)){actual_torque_angle=electric_angle-actual_electric_angle + 360.0f;}
+					else{actual_torque_angle=electric_angle-actual_electric_angle;}
 					modbus_registers_buffer[12]=(int16_t)actual_torque_angle;//write calculated value to modbus array
 					speed_measurement_loop_i++;
-					if(speed_measurement_loop_i>=30){
-						if(ssi_encoder_data.encoder_resolution==p8192ppr){
-							//speed(rpm)=(position pulse delta/enc resolution)*(60s/sample time(s))
-							//speed=(delta/8192)*(60/0,006)
-							speed=((float)ssi_encoder_data.encoder_position-(float)ssi_encoder_data.last_encoder_position_speed_loop)*0.66f;
-							if(speed>5000.0f){speed-=10000.0f;}if(speed<-5000.0f){speed+=10000.0f;}
-						}
-						//@TODO: add speed measurement for 17bit encoders
+					if(speed_measurement_loop_i>=10){
+
+						//speed(rpm)=(position pulse delta/enc resolution)*(60s/sample time(s))
+						//speed=(delta/131072)*(60/0,006)
+						speed=((float)ssi_encoder_data.encoder_position-(float)ssi_encoder_data.last_encoder_position_speed_loop)*0.228879f;
+						if(speed>15000.0f){speed-=30000.0f;}if(speed<-15000.0f){speed+=30000.0f;}
+
 						ssi_encoder_data.last_encoder_position_speed_loop=ssi_encoder_data.encoder_position;
 						speed_measurement_loop_i=0;
 					}
-					filtered_speed=LowPassFilter(speed_filter_ts,speed, &last_filtered_actual_speed);
-					modbus_registers_buffer[13]=(int16_t)(speed);
+					filtered_speed=LowPassFilter(parameter_set.speed_filter_ts,speed, &last_filtered_actual_speed);
+					modbus_registers_buffer[13]=(int16_t)(filtered_speed);
 
 				}
 				if(parameter_set.motor_feedback_type==tamagawa_encoder){
