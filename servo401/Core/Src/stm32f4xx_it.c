@@ -67,7 +67,7 @@ parameter_set_t parameter_set={
 		.motor_ls=0.00353f, //winding inducatnce in H
 		.motor_K=0.03288f,  //electical constant in V/(rad/s*pole_pairs) 1000RPM=104.719rad/s
 		.motor_feedback_type=tamagawa_encoder,
-		.encoder_electric_angle_correction=-90, //-90 for abb 0 for bch
+		.encoder_electric_angle_correction=-90, //-90 for abb BSM, 0 for bch, 0 for abb esm18
 		.encoder_resolution=5000,
 
 		.current_filter_ts=0.013f,
@@ -77,8 +77,8 @@ parameter_set_t parameter_set={
 		.field_current_ctrl_integral_gain=600.0f,
 
 		.speed_filter_ts=0.005f,
-		.speed_controller_proportional_gain=0.06f,
-		.speed_controller_integral_gain=0.8f,
+		.speed_controller_proportional_gain=0.011f,
+		.speed_controller_integral_gain=0.3f,
 		.speed_controller_output_torque_limit=1.0f, //limit torque, Id is the output so the calcualtion is needed to convert N/m to A
 		.speed_controller_integral_limit=1.0f
 };
@@ -649,6 +649,9 @@ void DMA2_Stream0_IRQHandler(void)
 					id_current_controller_data.last_integral=0.0f;
 					id_current_controller_data.last_error=0.0f;
 					id_current_controller_data.last_output=0.0f;
+					speed_controller_data.last_error=0.0f;
+					speed_controller_data.last_integral=0.0f;
+					speed_controller_data.last_output=0.0f;
 				}
 				//update voltages in TIM1 compare registers to output them to motor
 				if(inverter_state==run){
