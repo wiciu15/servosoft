@@ -84,6 +84,8 @@ float LowPassFilter(float Tf,float actual_measurement, float * last_filtered_val
 
 
 void output_sine_pwm(float angle,uint16_t duty_cycle){
+	//voltages propably need to be inverted to be correct with electric motor theory, mine inverter design has current transducers soldered in that they invert sign of current reading
+	// running this function on my board provides correct electic angles and rotation directions of voltage and current vectors so no changes are needed to vector control theory and MOST encoders
 	float angle_rad = (angle/180.0f)*3.141592f;
 	uint16_t commanded_duty_cycle=duty_cycle;
 	float sin_u = 0;

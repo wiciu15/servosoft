@@ -33,7 +33,7 @@ typedef struct _ssi_encoder_data_t {
 extern ssi_encoder_data_t ssi_encoder_data;
 
 void motor_identification(void);
-void motor_encoder_read_position(void);
+void mitsubishi_encoder_read_position(void);
 
 
 #endif /* INC_MITSUBISHI_ENCODER_H_ */

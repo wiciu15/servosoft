@@ -688,7 +688,7 @@ static void MX_GPIO_Init(void)
 /* USER CODE BEGIN 4 */
 void HAL_UARTEx_RxEventCallback(UART_HandleTypeDef *huart, uint16_t Size){
 	modbus_process_new_data_to_fifo(huart,Size);
-	process_modbus_command();
+
 }
 
 void HAL_UART_ErrorCallback(UART_HandleTypeDef *huart)
@@ -705,10 +705,7 @@ void HAL_UART_TxCpltCallback(UART_HandleTypeDef *huart)
 	if(huart->Instance == USART1){
 		HAL_GPIO_WritePin(MODBUS_DE_GPIO_Port,MODBUS_DE_Pin, 0);
 	}
-	if(huart->Instance == USART2){
-		HAL_GPIO_WritePin(GPIOC,GPIO_PIN_13, 0);
-	}
-
+	//this callback is too slow for encoder communication, changed UART2 TX to blocking transmission since only 1 byte is sent to encoder this should be quick
 }
 /* USER CODE END 4 */
 
@@ -733,6 +730,7 @@ void StartDefaultTask(void *argument)
 	/* Infinite loop */
 	for(;;)
 	{
+	process_modbus_command();
     osDelay(1);
   }
   /* USER CODE END 5 */

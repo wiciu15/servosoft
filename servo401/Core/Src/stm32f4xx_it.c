@@ -66,7 +66,7 @@ parameter_set_t parameter_set={
 		.motor_rs=0.42f,
 		.motor_ls=0.00353f, //winding inducatnce in H
 		.motor_K=0.03288f,  //electical constant in V/(rad/s*pole_pairs) 1000RPM=104.719rad/s
-		.motor_feedback_type=ssi_encoder,
+		.motor_feedback_type=mitsubishi_encoder,
 		.encoder_electric_angle_correction=60, //-90 for abb BSM, 0 for bch, 0 for abb esm18, 60 for hf-kn43
 		.encoder_resolution=5000,
 
@@ -76,11 +76,11 @@ parameter_set_t parameter_set={
 		.field_current_ctrl_proportional_gain=30.0f,
 		.field_current_ctrl_integral_gain=600.0f,
 
-		.speed_filter_ts=0.005f,
-		.speed_controller_proportional_gain=0.006f,
-		.speed_controller_integral_gain=0.15f,
-		.speed_controller_output_torque_limit=1.0f, //limit torque, Id is the output so the calcualtion is needed to convert N/m to A
-		.speed_controller_integral_limit=1.0f
+		.speed_filter_ts=0.02f,
+		.speed_controller_proportional_gain=0.005f,
+		.speed_controller_integral_gain=0.45f,
+		.speed_controller_output_torque_limit=1.0f, //limit torque, Iq is the output so the calcualtion is needed to convert N/m to A
+		.speed_controller_integral_limit=1.0f //1.0 is for example, valid iq current gets copied from motor nominal current
 };
 
 volatile uint16_t ADC_rawdata[4];
@@ -375,11 +375,9 @@ void TIM1_UP_TIM10_IRQHandler(void)
 void TIM3_IRQHandler(void)
 {
   /* USER CODE BEGIN TIM3_IRQn 0 */
-	HAL_ADC_Start_DMA(&hadc1, ADC_rawdata, 4);
+	HAL_ADC_Start_DMA(&hadc1, ADC_rawdata, 4);//start ADC sampling and wait for ADC to finish to continue with control loop, in meantime read position from serial encoders
 	if(parameter_set.motor_feedback_type==tamagawa_encoder){tamagawa_encoder_read_position();}
-	if(parameter_set.motor_feedback_type==ssi_encoder){motor_encoder_read_position();}
-	HAL_GPIO_WritePin(DISP_LATCH_GPIO_Port, DISP_LATCH_Pin, 1);
-
+	if(parameter_set.motor_feedback_type==mitsubishi_encoder){mitsubishi_encoder_read_position();}
   /* USER CODE END TIM3_IRQn 0 */
   HAL_TIM_IRQHandler(&htim3);
   /* USER CODE BEGIN TIM3_IRQn 1 */
@@ -437,6 +435,7 @@ void USART2_IRQHandler(void)
 void EXTI15_10_IRQHandler(void)
 {
   /* USER CODE BEGIN EXTI15_10_IRQn 0 */
+	//handle ABZ encoder indexing with 0 degree angle
 	if(HAL_GPIO_ReadPin(ENC_Z_GPIO_Port, ENC_Z_Pin)==1){
 			TIM2->CNT=parameter_set.encoder_resolution;
 			encoder_positioned=1;
@@ -456,7 +455,9 @@ void EXTI15_10_IRQHandler(void)
 void DMA2_Stream0_IRQHandler(void)
 {
   /* USER CODE BEGIN DMA2_Stream0_IRQn 0 */
-	//update pi controllers parameters from parameter set
+	//This gets called after ADC samples actual phase currents and actual encoder position is already read
+	//whole control loop runs with frequency of TIM3 interrupt, except for speed controller PID loop which is run by TIM4 interrput
+	//update pi controllers parameters from parameter set @TODO: only update them when parameter set changed
 	id_current_controller_data.proportional_gain=parameter_set.field_current_ctrl_proportional_gain;
 	id_current_controller_data.integral_gain=parameter_set.field_current_ctrl_integral_gain;
 	id_current_controller_data.antiwindup_limit=U_DClink_filtered;
@@ -470,7 +471,7 @@ void DMA2_Stream0_IRQHandler(void)
 	speed_controller_data.antiwindup_limit=parameter_set.motor_nominal_current;
 	speed_controller_data.output_limit=parameter_set.motor_nominal_current;
 
-	if(zerocurrent_reading_loop_i<15){ //after starting servo read ADC samples when output current is zero to minimize current transducers, opamps and ADC offset
+	if(zerocurrent_reading_loop_i<15){ //after starting system read 15 ADC samples when output current is zero to minimize current transducers, opamps and ADC offset and some of noise
 				I_U_zerocurrentreading+=ADC_rawdata[0];
 				I_V_zerocurrentreading+=ADC_rawdata[1];
 				if(zerocurrent_reading_loop_i==14){I_U_zerocurrentreading/=15;I_V_zerocurrentreading/=15;}
@@ -486,8 +487,8 @@ void DMA2_Stream0_IRQHandler(void)
 				U_DClink = (float)ADC_rawdata[2]*0.0250945f;
 				U_DClink_filtered = LowPassFilter(0.01f, U_DClink, &U_DClink_last);
 				dc_link_to_duty_cycle_ratio=DUTY_CYCLE_LIMIT/U_DClink_filtered;
-				if(U_DClink_filtered>INVERTER_OVERVOLTAGE_LEVEL && OV_measurement_error_counter<2){if(OV_measurement_error_counter==1){inverter_error_trip(overvoltage);}OV_measurement_error_counter++;}else{OV_measurement_error_counter=0;}
-				if(U_DClink_filtered<INVERTER_UNDERVOLTAGE_LEVEL && UV_measurement_error_counter<2){if(UV_measurement_error_counter==1){inverter_error_trip(undervoltage);}UV_measurement_error_counter++;}else{UV_measurement_error_counter=0;} //2 measurements under a treshold must happen in a row
+				if(U_DClink_filtered>INVERTER_OVERVOLTAGE_LEVEL ){inverter_error_trip(overvoltage);}
+				if(U_DClink_filtered<INVERTER_UNDERVOLTAGE_LEVEL){inverter_error_trip(undervoltage);}
 				modbus_registers_buffer[14] = (uint16_t)(U_DClink_filtered*10.0f);
 				//current calculation
 				I_U_raw=ADC_rawdata[0]-I_U_zerocurrentreading;
@@ -540,7 +541,7 @@ void DMA2_Stream0_IRQHandler(void)
 						filtered_speed=LowPassFilter(speed_filter_ts,speed, &last_filtered_actual_speed);
 					}
 				}
-				if(parameter_set.motor_feedback_type==ssi_encoder){
+				if(parameter_set.motor_feedback_type==mitsubishi_encoder){
 
 					if(ssi_encoder_data.encoder_resolution==p8192ppr){
 						modbus_registers_buffer[11]=ssi_encoder_data.encoder_position;

@@ -44,7 +44,7 @@ void motor_identification(void){
 	}
 }
 
-void motor_encoder_read_position(void){
+void mitsubishi_encoder_read_position(void){
 	uint8_t xor_cheksum=0;
 	for(uint8_t i=0;i<8;i++){
 		xor_cheksum^=UART2_RX_raw[i];
