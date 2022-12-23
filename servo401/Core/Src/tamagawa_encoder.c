@@ -22,7 +22,7 @@ void tamagawa_encoder_read_position(void){
 	}
 	else{*/ //calculate position and speed from received earlier data
 
-	tamagawa_encoder_data.last_encoder_position=ssi_encoder_data.encoder_position;
+	tamagawa_encoder_data.last_encoder_position=tamagawa_encoder_data.encoder_position;
 	tamagawa_encoder_data.encoder_position=tamagawa_encoder_data.motor_data_response_packet[2] | tamagawa_encoder_data.motor_data_response_packet[3]<<8 | tamagawa_encoder_data.motor_data_response_packet[4]<<16;
 	//if(ssi_encoder_data.encoder_position>262143){ssi_encoder_data.encoder_position=ssi_encoder_data.last_encoder_position;}//@TODO:encoder error handling
 	//tamagawa_encoder_data.encoder_position=131072-tamagawa_encoder_data.encoder_position; //switch direction of encoder rotation
@@ -37,7 +37,7 @@ void tamagawa_encoder_read_position(void){
 	HAL_StatusTypeDef err_code = HAL_UART_Transmit(&huart2, &tamagawa_encoder_data.encoder_command, 1,1); //using blocking mode TX because DE pin has to be toggled reaaly fast to not break first byte of received data
 	HAL_GPIO_WritePin(GPIOC,GPIO_PIN_13, 0);
 	if(err_code!=HAL_OK){
-		ssi_encoder_data.encoder_state=encoder_error_uart_busy;
+		tamagawa_encoder_data.encoder_state=encoder_error_uart_busy;
 	}
 	HAL_UART_Receive_DMA(&huart2, &tamagawa_encoder_data.motor_data_response_packet, 10);//start listening for response, it will be automatically copied by DMA after reception
 }

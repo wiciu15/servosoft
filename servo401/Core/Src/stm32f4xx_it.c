@@ -65,16 +65,16 @@ parameter_set_t parameter_set={
 		.motor_max_speed=3000,
 		.motor_rs=0.42f,
 		.motor_ls=0.00353f, //winding inducatnce in H
-		.motor_K=0.03288f,  //electical constant in V/(rad/s*pole_pairs) 1000RPM=104.719rad/s
+		.motor_K=0.03288f,  //electical constant in V/(rad/s*pole_pairs) 1000RPM=104.719rad/s UPDATE WHEN CHANGING POLE PAIRS
 		.motor_feedback_type=mitsubishi_encoder,
 		.encoder_electric_angle_correction=60, //-90 for abb BSM, 0 for bch, 0 for abb esm18, 60 for hf-kn43
 		.encoder_resolution=5000,
 
-		.current_filter_ts=0.013f,
-		.torque_current_ctrl_proportional_gain=30.0f, //gain in V/A
-		.torque_current_ctrl_integral_gain=1200.0f, //
-		.field_current_ctrl_proportional_gain=30.0f,
-		.field_current_ctrl_integral_gain=600.0f,
+		.current_filter_ts=0.003f,
+		.torque_current_ctrl_proportional_gain=4.0f, //gain in V/A
+		.torque_current_ctrl_integral_gain=2000.0f, //
+		.field_current_ctrl_proportional_gain=6.0f,
+		.field_current_ctrl_integral_gain=1600.0f,
 
 		.speed_filter_ts=0.02f,
 		.speed_controller_proportional_gain=0.005f,
@@ -487,8 +487,11 @@ void DMA2_Stream0_IRQHandler(void)
 				U_DClink = (float)ADC_rawdata[2]*0.0250945f;
 				U_DClink_filtered = LowPassFilter(0.01f, U_DClink, &U_DClink_last);
 				dc_link_to_duty_cycle_ratio=DUTY_CYCLE_LIMIT/U_DClink_filtered;
-				if(U_DClink_filtered>INVERTER_OVERVOLTAGE_LEVEL ){inverter_error_trip(overvoltage);}
-				if(U_DClink_filtered<INVERTER_UNDERVOLTAGE_LEVEL){inverter_error_trip(undervoltage);}
+
+				if(U_DClink_filtered>INVERTER_OVERVOLTAGE_LEVEL ){OV_measurement_error_counter++;}else{OV_measurement_error_counter=0;}
+				if(U_DClink_filtered<INVERTER_UNDERVOLTAGE_LEVEL){UV_measurement_error_counter++;}else{UV_measurement_error_counter=0;}
+				if(OV_measurement_error_counter>3){inverter_error_trip(overvoltage);}
+				if(UV_measurement_error_counter>3){inverter_error_trip(undervoltage);}
 				modbus_registers_buffer[14] = (uint16_t)(U_DClink_filtered*10.0f);
 				//current calculation
 				I_U_raw=ADC_rawdata[0]-I_U_zerocurrentreading;
@@ -542,20 +545,18 @@ void DMA2_Stream0_IRQHandler(void)
 					}
 				}
 				if(parameter_set.motor_feedback_type==mitsubishi_encoder){
-
-					if(ssi_encoder_data.encoder_resolution==p8192ppr){
-						modbus_registers_buffer[11]=ssi_encoder_data.encoder_position;
-						actual_electric_angle=(((fmodf(ssi_encoder_data.encoder_position, 8192.0f/(float)parameter_set.motor_pole_pairs))/(8192.0f/(float)parameter_set.motor_pole_pairs))*360.0f)+parameter_set.encoder_electric_angle_correction;
+					if(mitsubishi_encoder_data.encoder_resolution==8192){
+						modbus_registers_buffer[11]=mitsubishi_encoder_data.encoder_position;
+						actual_electric_angle=(((fmodf(mitsubishi_encoder_data.encoder_position, 8192.0f/(float)parameter_set.motor_pole_pairs))/(8192.0f/(float)parameter_set.motor_pole_pairs))*360.0f)+parameter_set.encoder_electric_angle_correction;
 						if(actual_electric_angle>=360.0f){actual_electric_angle-=360.0f;}
 						if(actual_electric_angle<0){actual_electric_angle+=360.0f;}
 					}
-					if(ssi_encoder_data.encoder_resolution==p131072ppr){
-						modbus_registers_buffer[11]=ssi_encoder_data.encoder_position/2;
-						actual_electric_angle=(((fmodf(ssi_encoder_data.encoder_position,131072.0f/(float)parameter_set.motor_pole_pairs))/(131072.0f/(float)parameter_set.motor_pole_pairs))*360.0f)+parameter_set.encoder_electric_angle_correction;
+					if(mitsubishi_encoder_data.encoder_resolution==131072){
+						modbus_registers_buffer[11]=mitsubishi_encoder_data.encoder_position/2;
+						actual_electric_angle=(((fmodf(mitsubishi_encoder_data.encoder_position,131072.0f/(float)parameter_set.motor_pole_pairs))/(131072.0f/(float)parameter_set.motor_pole_pairs))*360.0f)+parameter_set.encoder_electric_angle_correction;
 						if(actual_electric_angle>=360.0f){actual_electric_angle-=360.0f;}
 						if(actual_electric_angle<0){actual_electric_angle+=360.0f;}
 					}
-					if(ssi_encoder_data.encoder_resolution==unknown_resolution){actual_electric_angle=0;}//@TODO: encoder error trip
 					if(electric_angle-actual_electric_angle>180.0f){actual_torque_angle=(electric_angle-actual_electric_angle) - 360.0f;}
 					else if(electric_angle-actual_electric_angle<(-180.0f)){actual_torque_angle=electric_angle-actual_electric_angle + 360.0f;}
 					else{actual_torque_angle=electric_angle-actual_electric_angle;}
@@ -565,10 +566,10 @@ void DMA2_Stream0_IRQHandler(void)
 
 						//speed(rpm)=(position pulse delta/enc resolution)*(60s/sample time(s))
 						//speed=(delta/131072)*(60/0,006)
-						speed=((float)ssi_encoder_data.encoder_position-(float)ssi_encoder_data.last_encoder_position_speed_loop)*0.228879f;
+						speed=((float)mitsubishi_encoder_data.encoder_position-(float)mitsubishi_encoder_data.last_encoder_position_speed_loop)*0.228879f;
 						if(speed>15000.0f){speed-=30000.0f;}if(speed<-15000.0f){speed+=30000.0f;}
 
-						ssi_encoder_data.last_encoder_position_speed_loop=ssi_encoder_data.encoder_position;
+						mitsubishi_encoder_data.last_encoder_position_speed_loop=mitsubishi_encoder_data.encoder_position;
 						speed_measurement_loop_i=0;
 					}
 					filtered_speed=LowPassFilter(parameter_set.speed_filter_ts,speed, &last_filtered_actual_speed);
