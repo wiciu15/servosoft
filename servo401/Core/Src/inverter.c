@@ -53,7 +53,6 @@ void inverter_error_trip(inverter_error_t error){
 	inverter_disable();
 	inverter_state=trip;
 	inverter_error=error;
-	modbus_registers_buffer[2]=error;
 }
 
 void clarke_transform(float I_U,float I_V,float * I_alpha,float * I_beta){

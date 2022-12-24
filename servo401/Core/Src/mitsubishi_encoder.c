@@ -52,12 +52,7 @@ void mitsubishi_motor_identification(void){
 	}
 }
 
-void mitsubishi_encoder_read_position(void){
-
-	if(HAL_UART_Receive_DMA(&huart2, UART2_RX_raw, 9)==HAL_BUSY){mitsubishi_encoder_data.communication_error_count++;};
-	//HAL_UART_Transmit_DMA(&huart2, &command, 1); THIS IS TOO SLOW for j2s encoders in half-duplex
-	if(USART2_fast_transmit_RS485(mitsubishi_encoder_data.encoder_command)){inverter_error_trip(internal_software);}
-
+void mitsubishi_encoder_process_data(void){
 	uint8_t xor_cheksum=0;
 	for(uint8_t i=0;i<8;i++){
 		xor_cheksum^=UART2_RX_raw[i];
@@ -93,4 +88,10 @@ void mitsubishi_encoder_read_position(void){
 	}
 
 
+}
+
+void mitsubishi_encoder_send_command(void){
+	if(HAL_UART_Receive_DMA(&huart2, UART2_RX_raw, 9)==HAL_BUSY){mitsubishi_encoder_data.communication_error_count++;};
+	//HAL_UART_Transmit_DMA(&huart2, &command, 1); THIS IS TOO SLOW for j2s encoders in half-duplex
+	if(USART2_fast_transmit_RS485(mitsubishi_encoder_data.encoder_command)){inverter_error_trip(internal_software);}
 }

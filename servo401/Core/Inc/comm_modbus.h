@@ -10,8 +10,7 @@
 
 #include "modbus.h"
 
-extern uint16_t modbus_registers_buffer[30];
-extern uint8_t UART_RX_buf[200];
+extern uint8_t UART_RX_buf[250];
 
 uint16_t modbus_protocol_read(uint32_t la);
 uint16_t modbus_protocol_write(uint32_t la, uint16_t value);

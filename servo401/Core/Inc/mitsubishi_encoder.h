@@ -33,7 +33,8 @@ extern mitsubishi_encoder_data_t mitsubishi_encoder_data;
 
 HAL_StatusTypeDef USART2_fast_transmit_RS485(uint8_t byte_to_send);
 void mitsubishi_motor_identification(void);
-void mitsubishi_encoder_read_position(void);
+void mitsubishi_encoder_process_data(void);
+void mitsubishi_encoder_send_command(void);
 
 
 #endif /* INC_MITSUBISHI_ENCODER_H_ */

@@ -10,14 +10,14 @@
 
 #include "parameter_set.h"
 
-#define INVERTER_OVERCURRENT_TRIP_LEVEL 5.0f  //overcurrrent trip setting level in Amperes
+#define INVERTER_OVERCURRENT_TRIP_LEVEL 8.0f  //overcurrrent trip setting level in Amperes
 #define INVERTER_OVERVOLTAGE_LEVEL 90.0f
 #define INVERTER_UNDERVOLTAGE_LEVEL 20.0f
 #define DUTY_CYCLE_LIMIT 4999
 #define CURRENT_SENSE_RATIO 0.0166023f //multiply this number with number of adc samples measured from current sensor output 0.0119827@4.17A 0.012126 0.0132173@1.52a
 #define CURRENT_RMS_SAMPLING_COUNT 500 //(2*pwm frequency)/this define=rms current sampling frequency, for 500 = 32 calculations per second
 
-typedef enum {no_error,undervoltage,overvoltage,shortcircuit,inverter_overcurrent,motor_overcurrent,encoder_error,internal_software}inverter_error_t;
+typedef enum {no_error,undervoltage,overvoltage,shortcircuit,inverter_overcurrent,motor_overcurrent,encoder_error,internal_software,external_comm}inverter_error_t;
 typedef enum {stop,run,inhibit,trip}inverter_state_t;
 typedef enum {manual,open_loop_current,foc}control_mode_t;
 

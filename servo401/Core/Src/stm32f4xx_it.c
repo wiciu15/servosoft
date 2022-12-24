@@ -56,18 +56,19 @@
 
 //DEFAULT PARAMETER SET FROM DRIVE ROM, values would reset between restarts, @TODO: read and write parameter set from flash on boot
 parameter_set_t parameter_set={
-		.motor_max_current=8.0f, //14.3 according to datasheet
-		.motor_nominal_current=2.7f,
-		.motor_pole_pairs=5, //4 for abb motor 5 for bch and mitsubishi hf-kn43
-		.motor_max_voltage=150.0f,
+		.motor_max_current=6.0f, //14.3 according to datasheet
+		.motor_nominal_current=4.7f,
+		.motor_pole_pairs=4, //4 for abb motor 5 for bch and mitsubishi hf-kn43
+		.motor_max_voltage=110.0f,
 		.motor_max_torque=7.17f,
 		.motor_nominal_torque=2.39f,
-		.motor_max_speed=3000,
+		.motor_nominal_speed=3000,
+		.motor_max_speed=5000,
 		.motor_rs=0.42f,
 		.motor_ls=0.00353f, //winding inducatnce in H
 		.motor_K=0.03288f,  //electical constant in V/(rad/s*pole_pairs) 1000RPM=104.719rad/s UPDATE WHEN CHANGING POLE PAIRS
-		.motor_feedback_type=mitsubishi_encoder,
-		.encoder_electric_angle_correction=60, //-90 for abb BSM, 0 for bch, 0 for abb esm18, 60 for hf-kn43
+		.motor_feedback_type=tamagawa_encoder,
+		.encoder_electric_angle_correction=-90, //-90 for abb BSM, 0 for bch, 0 for abb esm18, 60 for hf-kn43
 		.encoder_resolution=5000,
 
 		.current_filter_ts=0.003f,
@@ -76,9 +77,9 @@ parameter_set_t parameter_set={
 		.field_current_ctrl_proportional_gain=6.0f,
 		.field_current_ctrl_integral_gain=1600.0f,
 
-		.speed_filter_ts=0.02f,
-		.speed_controller_proportional_gain=0.005f,
-		.speed_controller_integral_gain=0.45f,
+		.speed_filter_ts=0.001f,
+		.speed_controller_proportional_gain=0.029f,
+		.speed_controller_integral_gain=0.14f,
 		.speed_controller_output_torque_limit=1.0f, //limit torque, Iq is the output so the calcualtion is needed to convert N/m to A
 		.speed_controller_integral_limit=1.0f //1.0 is for example, valid iq current gets copied from motor nominal current
 };
@@ -172,6 +173,7 @@ int16_t encoder_actual_position=0;
 int16_t encoder_correction_angle=-122; //offset in degrees between encoder 0 position and stator zero electric angle
 float actual_electric_angle=0.0f;
 float last_actual_electric_angle=0.0f;
+float speed_calc_angle_delta=0.0f;
 float actual_torque_angle=0.0f;
 //motor_feedback_type_t motor_feedback_type=tamagawa_encoder;
 
@@ -377,7 +379,7 @@ void TIM3_IRQHandler(void)
   /* USER CODE BEGIN TIM3_IRQn 0 */
 	HAL_ADC_Start_DMA(&hadc1, ADC_rawdata, 4);//start ADC sampling and wait for ADC to finish to continue with control loop, in meantime read position from serial encoders
 	if(parameter_set.motor_feedback_type==tamagawa_encoder){tamagawa_encoder_read_position();}
-	if(parameter_set.motor_feedback_type==mitsubishi_encoder){mitsubishi_encoder_read_position();}
+	if(parameter_set.motor_feedback_type==mitsubishi_encoder){mitsubishi_encoder_send_command();}
   /* USER CODE END TIM3_IRQn 0 */
   HAL_TIM_IRQHandler(&htim3);
   /* USER CODE BEGIN TIM3_IRQn 1 */
@@ -391,9 +393,7 @@ void TIM3_IRQHandler(void)
 void TIM4_IRQHandler(void)
 {
   /* USER CODE BEGIN TIM4_IRQn 0 */
-if(speed_setpoint_rpm!=0){
-	torque_setpoint = PI_control(&speed_controller_data, speed_setpoint_rpm-filtered_speed);
-}
+
   /* USER CODE END TIM4_IRQn 0 */
   HAL_TIM_IRQHandler(&htim4);
   /* USER CODE BEGIN TIM4_IRQn 1 */
@@ -468,8 +468,8 @@ void DMA2_Stream0_IRQHandler(void)
 	iq_current_controller_data.output_limit=U_DClink_filtered;
 	speed_controller_data.proportional_gain=parameter_set.speed_controller_proportional_gain;
 	speed_controller_data.integral_gain=parameter_set.speed_controller_integral_gain;
-	speed_controller_data.antiwindup_limit=parameter_set.motor_nominal_current;
-	speed_controller_data.output_limit=parameter_set.motor_nominal_current;
+	speed_controller_data.antiwindup_limit=parameter_set.motor_max_current;
+	speed_controller_data.output_limit=parameter_set.motor_max_current;
 
 	if(zerocurrent_reading_loop_i<15){ //after starting system read 15 ADC samples when output current is zero to minimize current transducers, opamps and ADC offset and some of noise
 				I_U_zerocurrentreading+=ADC_rawdata[0];
@@ -492,7 +492,6 @@ void DMA2_Stream0_IRQHandler(void)
 				if(U_DClink_filtered<INVERTER_UNDERVOLTAGE_LEVEL){UV_measurement_error_counter++;}else{UV_measurement_error_counter=0;}
 				if(OV_measurement_error_counter>3){inverter_error_trip(overvoltage);}
 				if(UV_measurement_error_counter>3){inverter_error_trip(undervoltage);}
-				modbus_registers_buffer[14] = (uint16_t)(U_DClink_filtered*10.0f);
 				//current calculation
 				I_U_raw=ADC_rawdata[0]-I_U_zerocurrentreading;
 				I_V_raw=ADC_rawdata[1]-I_V_zerocurrentreading;
@@ -511,7 +510,6 @@ void DMA2_Stream0_IRQHandler(void)
 					I_V_RMS=sqrtf(I_V_square_sum/(float)rms_count);
 					I_W_RMS=sqrtf(I_W_square_sum/(float)rms_count);
 					I_out=(I_U_RMS+I_V_RMS+I_W_RMS)/3.0f;
-					modbus_registers_buffer[10]=(uint16_t)(I_out*100.0f);
 					rms_count=0;I_U_square_sum=0.0f;I_V_square_sum=0.0f;I_W_square_sum=0.0f;}
 
 				if((I_U>INVERTER_OVERCURRENT_TRIP_LEVEL || I_U < (-INVERTER_OVERCURRENT_TRIP_LEVEL) || I_V>INVERTER_OVERCURRENT_TRIP_LEVEL || I_V < (-INVERTER_OVERCURRENT_TRIP_LEVEL) || I_W > INVERTER_OVERCURRENT_TRIP_LEVEL || I_W <(-INVERTER_OVERCURRENT_TRIP_LEVEL)) && OC_measurement_error_counter<3){
@@ -519,25 +517,21 @@ void DMA2_Stream0_IRQHandler(void)
 					if(OC_measurement_error_counter==2){inverter_error_trip(inverter_overcurrent);}
 				}else{OC_measurement_error_counter=0;}
 
-				if((I_U>parameter_set.motor_max_current || I_U < (-parameter_set.motor_max_current) || I_V>parameter_set.motor_max_current || I_V < (-parameter_set.motor_max_current) || I_W > parameter_set.motor_max_current || I_W <(-parameter_set.motor_max_current)) && OC_measurement_error_counter<3){
-					OC_measurement_error_counter++;
-					if(OC_measurement_error_counter==2){inverter_error_trip(motor_overcurrent);}
-				}else{OC_measurement_error_counter=0;}
+				if(I_out>parameter_set.motor_max_current){
+					inverter_error_trip(motor_overcurrent);} //@TODO: implement I2T overload protection
 
 				if(parameter_set.motor_feedback_type==abz_encoder){
 					if(encoder_positioned){
 						encoder_actual_position=parameter_set.encoder_resolution-TIM2->CNT; //flip direction of encoder
-						modbus_registers_buffer[11]=encoder_actual_position;
 						actual_electric_angle=(float)(encoder_actual_position % (parameter_set.encoder_resolution/parameter_set.motor_pole_pairs))*0.36f-parameter_set.encoder_electric_angle_correction;  //calculate rotor electric angle
 						if(electric_angle-actual_electric_angle>180.0f){actual_torque_angle=(electric_angle-actual_electric_angle) - 360.0f;}
 						else if(electric_angle-actual_electric_angle<(-180.0f)){actual_torque_angle=electric_angle-actual_electric_angle + 360.0f;}
-						else{actual_torque_angle=electric_angle-actual_electric_angle;}modbus_registers_buffer[12]=(int16_t)actual_torque_angle;//write calculated value to modbus array
+						else{actual_torque_angle=electric_angle-actual_electric_angle;}
 						speed_measurement_loop_i++;
 						if(speed_measurement_loop_i>=10){
 							speed=((actual_electric_angle-last_actual_electric_angle)/parameter_set.motor_pole_pairs)/0.012f; //speed(rpm) = ((x(deg)/polepairs)/360deg)/(0,002(s)/60s)
 							float theoretical_encoder_speed=(360.0f/parameter_set.motor_pole_pairs)/0.012f;
 							if(speed>theoretical_encoder_speed/2.0f){speed-=theoretical_encoder_speed;}if(speed<(-theoretical_encoder_speed/2.0f)){speed+=theoretical_encoder_speed;}
-							modbus_registers_buffer[13]=(int16_t)(filtered_speed);
 							last_actual_electric_angle = actual_electric_angle;
 							speed_measurement_loop_i=0;
 						}
@@ -545,14 +539,14 @@ void DMA2_Stream0_IRQHandler(void)
 					}
 				}
 				if(parameter_set.motor_feedback_type==mitsubishi_encoder){
+					mitsubishi_encoder_process_data();
+					encoder_actual_position=mitsubishi_encoder_data.encoder_position>>1;//divide by 2 to fit into uint16
 					if(mitsubishi_encoder_data.encoder_resolution==8192){
-						modbus_registers_buffer[11]=mitsubishi_encoder_data.encoder_position;
 						actual_electric_angle=(((fmodf(mitsubishi_encoder_data.encoder_position, 8192.0f/(float)parameter_set.motor_pole_pairs))/(8192.0f/(float)parameter_set.motor_pole_pairs))*360.0f)+parameter_set.encoder_electric_angle_correction;
 						if(actual_electric_angle>=360.0f){actual_electric_angle-=360.0f;}
 						if(actual_electric_angle<0){actual_electric_angle+=360.0f;}
 					}
 					if(mitsubishi_encoder_data.encoder_resolution==131072){
-						modbus_registers_buffer[11]=mitsubishi_encoder_data.encoder_position/2;
 						actual_electric_angle=(((fmodf(mitsubishi_encoder_data.encoder_position,131072.0f/(float)parameter_set.motor_pole_pairs))/(131072.0f/(float)parameter_set.motor_pole_pairs))*360.0f)+parameter_set.encoder_electric_angle_correction;
 						if(actual_electric_angle>=360.0f){actual_electric_angle-=360.0f;}
 						if(actual_electric_angle<0){actual_electric_angle+=360.0f;}
@@ -560,8 +554,7 @@ void DMA2_Stream0_IRQHandler(void)
 					if(electric_angle-actual_electric_angle>180.0f){actual_torque_angle=(electric_angle-actual_electric_angle) - 360.0f;}
 					else if(electric_angle-actual_electric_angle<(-180.0f)){actual_torque_angle=electric_angle-actual_electric_angle + 360.0f;}
 					else{actual_torque_angle=electric_angle-actual_electric_angle;}
-					modbus_registers_buffer[12]=(int16_t)actual_torque_angle;//write calculated value to modbus array
-					speed_measurement_loop_i++;
+					/*speed_measurement_loop_i++;
 					if(speed_measurement_loop_i>=10){
 
 						//speed(rpm)=(position pulse delta/enc resolution)*(60s/sample time(s))
@@ -573,32 +566,34 @@ void DMA2_Stream0_IRQHandler(void)
 						speed_measurement_loop_i=0;
 					}
 					filtered_speed=LowPassFilter(parameter_set.speed_filter_ts,speed, &last_filtered_actual_speed);
-					modbus_registers_buffer[13]=(int16_t)(filtered_speed);
+					modbus_registers_buffer[13]=(int16_t)(filtered_speed);*/
 
 				}
 				if(parameter_set.motor_feedback_type==tamagawa_encoder){
-					modbus_registers_buffer[11]=tamagawa_encoder_data.encoder_position/2; //encoder output is 17-bit but modbus register can hold only 16-bit
+					encoder_actual_position=tamagawa_encoder_data.encoder_position>>1; //divide by 2 to fit into uint16
 					actual_electric_angle=(((fmodf(tamagawa_encoder_data.encoder_position, 131072.0f/(float)parameter_set.motor_pole_pairs))/(131072.0f/(float)parameter_set.motor_pole_pairs))*360.0f)+parameter_set.encoder_electric_angle_correction;
 					if(actual_electric_angle>=360.0f){actual_electric_angle-=360.0f;}
 					if(actual_electric_angle<0){actual_electric_angle+=360.0f;} //make sure to get 0-360 deg after correction
 					if(electric_angle-actual_electric_angle>180.0f){actual_torque_angle=(electric_angle-actual_electric_angle) - 360.0f;}
 					else if(electric_angle-actual_electric_angle<(-180.0f)){actual_torque_angle=electric_angle-actual_electric_angle + 360.0f;}
 					else{actual_torque_angle=electric_angle-actual_electric_angle;}
-					modbus_registers_buffer[12]=(int16_t)actual_torque_angle;//write calculated value to modbus array
-					speed_measurement_loop_i++;
-					if(speed_measurement_loop_i>=10){
-
-						//speed(rpm)=(position pulse delta/enc resolution)*(60s/sample time(s))
-						//speed=(delta/131072)*(60/0,006)
-						speed=((float)tamagawa_encoder_data.encoder_position-(float)tamagawa_encoder_data.last_encoder_position_speed_loop)*0.228879f;
-						if(speed>15000.0f){speed-=30000.0f;}if(speed<-15000.0f){speed+=30000.0f;}
-
-						tamagawa_encoder_data.last_encoder_position_speed_loop=tamagawa_encoder_data.encoder_position;
-						speed_measurement_loop_i=0;
-					}
-					filtered_speed=LowPassFilter(parameter_set.speed_filter_ts,speed, &last_filtered_actual_speed);
-					modbus_registers_buffer[13]=(int16_t)(filtered_speed);
 				}
+
+
+				if(speed_measurement_loop_i>=5){
+					speed_calc_angle_delta=actual_electric_angle-last_actual_electric_angle;
+					speed=((speed_calc_angle_delta)/parameter_set.motor_pole_pairs)/0.006f; //speed(rpm) = ((x(deg)/polepairs)/360deg)/(0,002(s)/60s)
+					float theoretical_encoder_speed=(360.0f/parameter_set.motor_pole_pairs)/0.006f;
+					if(speed>theoretical_encoder_speed/2.0f){speed-=theoretical_encoder_speed;}if(speed<(-theoretical_encoder_speed/2.0f)){speed+=theoretical_encoder_speed;}
+					last_actual_electric_angle = actual_electric_angle;
+					if(speed_setpoint_rpm!=0){
+						torque_setpoint = PI_control(&speed_controller_data, speed_setpoint_rpm-filtered_speed);
+					}
+					speed_measurement_loop_i=0;
+				}
+				speed_measurement_loop_i++;
+				filtered_speed=LowPassFilter(speed_filter_ts,speed, &last_filtered_actual_speed);
+
 
 				//calculate id/iq vetors based on rotor angle calculation/estimation
 				clarke_transform(I_U, I_V, &I_alpha, &I_beta);
@@ -606,8 +601,6 @@ void DMA2_Stream0_IRQHandler(void)
 				if(control_mode==open_loop_current){park_transform(I_alpha, I_beta, electric_angle_setpoint, &I_d, &I_q);} //angle for park transform is given from stator voltage angle setpoint, which switches id/iq current
 				I_d_filtered = LowPassFilter(parameter_set.current_filter_ts, I_d, &I_d_last);
 				I_q_filtered = LowPassFilter(parameter_set.current_filter_ts, I_q, &I_q_last);
-				modbus_registers_buffer[15]=(int16_t)(I_d_filtered*100);
-				modbus_registers_buffer[16]=(int16_t)(I_q_filtered*100);
 
 				//calculate voltage vectors
 				if(control_mode==manual){
