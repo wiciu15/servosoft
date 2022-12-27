@@ -72,9 +72,9 @@ parameter_set_t parameter_set={
 		.encoder_resolution=5000,
 
 		.current_filter_ts=0.003f,
-		.torque_current_ctrl_proportional_gain=4.0f, //gain in V/A
+		.torque_current_ctrl_proportional_gain=3.9f, //gain in V/A
 		.torque_current_ctrl_integral_gain=2000.0f, //
-		.field_current_ctrl_proportional_gain=6.0f,
+		.field_current_ctrl_proportional_gain=6.1f,
 		.field_current_ctrl_integral_gain=1600.0f,
 
 		.speed_filter_ts=0.001f,

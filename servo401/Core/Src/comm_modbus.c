@@ -36,7 +36,7 @@ uint16_t modbus_protocol_read(uint32_t la){
 	case 3: response = inverter_state;break;
 	case 5: response = control_mode;break;
 	case 6:{if(control_mode==manual || control_mode==open_loop_current){response = (int16_t)(speed_setpoint_deg_s/6.0f);}if(control_mode==foc){response = speed_setpoint_rpm;} break;}
-	case 7:{if(control_mode==manual){response = (duty_cycle/(float)duty_cycle_limit)*100.0f;}if(control_mode==open_loop_current || control_mode == foc){response = (int16_t)((torque_setpoint/parameter_set.motor_nominal_current)*100.0f);}break;}
+	case 7:{if(control_mode==manual){response = (duty_cycle/(float)duty_cycle_limit)*100.0f;}if(control_mode==open_loop_current || control_mode == foc){response = (int16_t)((torque_setpoint/parameter_set.motor_nominal_current)*1000.0f);}break;}
 	case 8:{if(control_mode==foc){response = (int16_t)((id_setpoint/parameter_set.motor_nominal_current)*1000.0f);}break;}
 	case 10: response = (int16_t)(I_out *100.0f);break;
 	case 11: response = (uint16_t)(actual_electric_angle);break;
@@ -102,10 +102,10 @@ uint16_t modbus_protocol_write(uint32_t la, uint16_t value)
 	case 6: //speed setpoint in rpm
 	{int16_t received_speed=value;
 	if(control_mode==manual || control_mode==open_loop_current){
-		if((received_speed)<=1000 && (received_speed)>=(-1000) ){speed_setpoint_deg_s = (float)received_speed*6.0f;}
+		if((received_speed)<=5000 && (received_speed)>=(-5000) ){speed_setpoint_deg_s = (float)received_speed*6.0f;}
 	}
 	if(control_mode==foc){
-		if((received_speed)<=1000 && (received_speed)>=(-1000) ){speed_setpoint_rpm = received_speed;}
+		if((received_speed)<=5000 && (received_speed)>=(-5000) ){speed_setpoint_rpm = received_speed;}
 	}
 	break;}
 
