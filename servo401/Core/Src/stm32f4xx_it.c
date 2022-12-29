@@ -71,15 +71,15 @@ parameter_set_t parameter_set={
 		.encoder_electric_angle_correction=-90, //-90 for abb BSM, 0 for bch, 0 for abb esm18, 60 for hf-kn43
 		.encoder_resolution=5000,
 
-		.current_filter_ts=0.003f,
+		.current_filter_ts=0.002f,
 		.torque_current_ctrl_proportional_gain=3.9f, //gain in V/A
-		.torque_current_ctrl_integral_gain=2000.0f, //
+		.torque_current_ctrl_integral_gain=1000.0f, //
 		.field_current_ctrl_proportional_gain=6.1f,
-		.field_current_ctrl_integral_gain=1600.0f,
+		.field_current_ctrl_integral_gain=1000.0f,
 
 		.speed_filter_ts=0.001f,
-		.speed_controller_proportional_gain=0.029f,
-		.speed_controller_integral_gain=0.14f,
+		.speed_controller_proportional_gain=0.023f,
+		.speed_controller_integral_gain=0.1f,
 		.speed_controller_output_torque_limit=1.0f, //limit torque, Iq is the output so the calcualtion is needed to convert N/m to A
 		.speed_controller_integral_limit=1.0f //1.0 is for example, valid iq current gets copied from motor nominal current
 };
@@ -379,7 +379,7 @@ void TIM3_IRQHandler(void)
   /* USER CODE BEGIN TIM3_IRQn 0 */
 	HAL_ADC_Start_DMA(&hadc1, ADC_rawdata, 4);//start ADC sampling and wait for ADC to finish to continue with control loop, in meantime read position from serial encoders
 	if(parameter_set.motor_feedback_type==tamagawa_encoder){tamagawa_encoder_read_position();}
-	if(parameter_set.motor_feedback_type==mitsubishi_encoder){mitsubishi_encoder_send_command();}
+	if(parameter_set.motor_feedback_type==mitsubishi_encoder && mitsubishi_encoder_data.motor_power!=0){mitsubishi_encoder_send_command();}
   /* USER CODE END TIM3_IRQn 0 */
   HAL_TIM_IRQHandler(&htim3);
   /* USER CODE BEGIN TIM3_IRQn 1 */

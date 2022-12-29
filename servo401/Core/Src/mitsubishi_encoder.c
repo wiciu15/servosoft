@@ -24,7 +24,7 @@ void mitsubishi_motor_identification(void){
 	uint8_t command = 0x92;
 	for(uint8_t i=0;i<=12;i++){
 		if(i>=4){command=0x7A;}
-		if(HAL_UART_Receive_DMA(&huart2, UART2_RX_raw, 9)){inverter_error_trip(internal_software);}
+		if(HAL_UART_Receive_DMA(&huart2, UART2_RX_raw, 9)){/*inverter_error_trip(internal_software);*/}
 		//HAL_UART_Transmit_DMA(&huart2, &command, 1); THIS IS TOO SLOW for j2s encoders in half-duplex
 		if(USART2_fast_transmit_RS485(command)){inverter_error_trip(internal_software);}
 		osDelay(1);

@@ -25,6 +25,7 @@
 #include "comm_modbus.h"
 #include <stdio.h>
 #include "mitsubishi_encoder.h"
+#include "inverter.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -722,7 +723,6 @@ void StartDefaultTask(void *argument)
 	//HAL_ADC_Start_DMA(&hadc1, ADC_rawdata, 4);
 	Modbus_init();
 	osDelay(300);
-	mitsubishi_motor_identification();
 	HAL_TIM_Base_Start_IT(&htim3);
 	HAL_TIM_Base_Start_IT(&htim4);
 	HAL_TIM_Base_Start_IT(&htim1); //16 khz ISR synchronized with PWM
@@ -731,6 +731,7 @@ void StartDefaultTask(void *argument)
 	for(;;)
 	{
 	process_modbus_command();
+	if(parameter_set.motor_feedback_type == mitsubishi_encoder&& mitsubishi_encoder_data.motor_power==0){mitsubishi_motor_identification();}
     osDelay(1);
   }
   /* USER CODE END 5 */
