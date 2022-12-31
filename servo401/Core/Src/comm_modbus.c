@@ -9,6 +9,8 @@
 #include "modbus.h"
 #include <string.h>
 #include "inverter.h"
+#include "mitsubishi_encoder.h"
+#include "tamagawa_encoder.h"
 
 mbus_t modbus;
 Modbus_Conf_t mb_config;
@@ -46,10 +48,12 @@ uint16_t modbus_protocol_read(uint32_t la){
 	case 15: response = (int16_t)(I_d_filtered*100.0f);break;
 	case 16: response = (int16_t)(I_q_filtered*100.0f);break;
 	case 17: response = encoder_actual_position;break;
+	case 18: response = calculated_voltage_vector*10.0f;break;
 
 	case 20: response = parameter_set.motor_feedback_type;break;
 	case 21: response = parameter_set.encoder_electric_angle_correction;break;
 	case 22: response = parameter_set.encoder_resolution;break;
+	case 23: if(parameter_set.motor_feedback_type==mitsubishi_encoder){response = mitsubishi_encoder_data.excessive_acceleration_error_count;}if(parameter_set.motor_feedback_type==tamagawa_encoder){response = tamagawa_encoder_data.excessive_acceleration_error_count;}break;
 	case 31: response = parameter_set.motor_pole_pairs;break;
 	case 32: response = parameter_set.motor_nominal_current*100.0f;break;
 	case 33: response = (parameter_set.motor_max_current/parameter_set.motor_nominal_current)*100.0f;break;

@@ -25,6 +25,7 @@
 #include "comm_modbus.h"
 #include <stdio.h>
 #include "mitsubishi_encoder.h"
+#include "tamagawa_encoder.h"
 #include "inverter.h"
 /* USER CODE END Includes */
 
@@ -719,7 +720,7 @@ void HAL_UART_TxCpltCallback(UART_HandleTypeDef *huart)
 /* USER CODE END Header_StartDefaultTask */
 void StartDefaultTask(void *argument)
 {
-  /* USER CODE BEGIN 5 */
+	/* USER CODE BEGIN 5 */
 	//HAL_ADC_Start_DMA(&hadc1, ADC_rawdata, 4);
 	Modbus_init();
 	osDelay(300);
@@ -727,14 +728,16 @@ void StartDefaultTask(void *argument)
 	HAL_TIM_Base_Start_IT(&htim4);
 	HAL_TIM_Base_Start_IT(&htim1); //16 khz ISR synchronized with PWM
 	HAL_TIM_Encoder_Start(&htim2, TIM_CHANNEL_ALL);
+
 	/* Infinite loop */
 	for(;;)
 	{
-	process_modbus_command();
-	if(parameter_set.motor_feedback_type == mitsubishi_encoder&& mitsubishi_encoder_data.motor_power==0){mitsubishi_motor_identification();}
-    osDelay(1);
-  }
-  /* USER CODE END 5 */
+		process_modbus_command();
+		if(parameter_set.motor_feedback_type == mitsubishi_encoder && mitsubishi_encoder_data.encoder_state==encoder_eeprom_reading){mitsubishi_motor_identification();}
+		if(parameter_set.motor_feedback_type==tamagawa_encoder && tamagawa_encoder_data.encoder_state==encoder_eeprom_reading){tamagawa_encoder_motor_identification();	}
+		osDelay(1);
+	}
+	/* USER CODE END 5 */
 }
 
 /**

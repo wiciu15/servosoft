@@ -5,40 +5,93 @@
  *      Author: Wiktor
  */
 #include "tamagawa_encoder.h"
+#include "inverter.h"
+#include <string.h>
+#include "cmsis_os.h"
+
 
 extern UART_HandleTypeDef huart2;
 //uint8_t UART2_RX_raw[10];
-tamagawa_encoder_data_t tamagawa_encoder_data;
+tamagawa_encoder_data_t tamagawa_encoder_data={
+		.checksum_error_count=0,
+		.encoder_command=0x00,
+		//command 0x02 gives position[2,3,4] and cheksum[5], 0x1A gives two positions, 0xC2 resets one-turn data, 0x92 gives two null bytes and checksum
+		//five bits of command, commands are listed in https://www.ti.com/lit/ug/tidue74d/tidue74d.pdf + 010 as sink
+		.encoder_position=0,
+		.encoder_state=encoder_eeprom_reading,
+		.excessive_acceleration_error_count=0,
+		.last_encoder_position=0,
+		.motor_eeprom_request={0},
+		.motor_data_response_packet={0},
+		.motor_eeprom={0},
+		.speed=0,
+		.communication_error_count=0
+};
 
 void tamagawa_encoder_read_position(void){
-	/*uint8_t xor_cheksum=0;
-	for(uint8_t i=0;i<9;i++){
+	if(USART_fast_transmit_RS485(&huart2, tamagawa_encoder_data.encoder_command)!=HAL_OK){inverter_error_trip(internal_software);}
+	if(HAL_UART_Receive_DMA(&huart2, tamagawa_encoder_data.motor_data_response_packet, 11)!=HAL_OK){//start listening for response, it will be automatically copied by DMA after reception
+		tamagawa_encoder_data.communication_error_count++;
+		if(tamagawa_encoder_data.communication_error_count>10){memset(&tamagawa_encoder_data,0,sizeof(tamagawa_encoder_data_t));inverter_error_trip(encoder_error_communication);}
+	}else{tamagawa_encoder_data.communication_error_count=0;}
+
+	uint8_t xor_cheksum=0;
+	for(uint8_t i=0;i<10;i++){
 		xor_cheksum^=tamagawa_encoder_data.motor_data_response_packet[i];
 	}
-	if(xor_cheksum!=UART2_RX_raw[9]){
-		ssi_encoder_data.checksum_error_count++;
-		if(ssi_encoder_data.checksum_error_count>3 && ssi_encoder_data.encoder_state!=encoder_error_no_communication){ssi_encoder_data.encoder_state=encoder_error_cheksum;}
-		if(ssi_encoder_data.checksum_error_count>100){ssi_encoder_data.encoder_state=encoder_error_no_communication;}
+	if(xor_cheksum!=tamagawa_encoder_data.motor_data_response_packet[10]){
+		tamagawa_encoder_data.checksum_error_count++;
+		if(tamagawa_encoder_data.checksum_error_count>100){memset(&tamagawa_encoder_data,0,sizeof(tamagawa_encoder_data_t));inverter_error_trip(encoder_error_communication);}
 	}
-	else{*/ //calculate position and speed from received earlier data
-
-	tamagawa_encoder_data.last_encoder_position=tamagawa_encoder_data.encoder_position;
-	tamagawa_encoder_data.encoder_position=tamagawa_encoder_data.motor_data_response_packet[2] | tamagawa_encoder_data.motor_data_response_packet[3]<<8 | tamagawa_encoder_data.motor_data_response_packet[4]<<16;
-	//if(ssi_encoder_data.encoder_position>262143){ssi_encoder_data.encoder_position=ssi_encoder_data.last_encoder_position;}//@TODO:encoder error handling
-	//tamagawa_encoder_data.encoder_position=131072-tamagawa_encoder_data.encoder_position; //switch direction of encoder rotation
-	int32_t speed = tamagawa_encoder_data.last_encoder_position-tamagawa_encoder_data.encoder_position;
-	if(((speed>2000) && (speed<129000))|| //may not work, not used not tested
-			((speed<(-2000)) && (speed>(-129000)))){
-		tamagawa_encoder_data.excessive_acceleration_error_count++;
-		if(tamagawa_encoder_data.excessive_acceleration_error_count>2){tamagawa_encoder_data.encoder_state=encoder_error_acceleration;}
+	else{ //calculate position and speed from received earlier data
+		//tamagawa_encoder_data.encoder_state=encoder_ok;
+		tamagawa_encoder_data.last_encoder_position=tamagawa_encoder_data.encoder_position;
+		tamagawa_encoder_data.encoder_position=tamagawa_encoder_data.motor_data_response_packet[2] | tamagawa_encoder_data.motor_data_response_packet[3]<<8 | tamagawa_encoder_data.motor_data_response_packet[4]<<16;
+		tamagawa_encoder_data.speed = tamagawa_encoder_data.last_encoder_position-tamagawa_encoder_data.encoder_position;
+		//mechanical encoder defect detection not tested
+		if(((tamagawa_encoder_data.speed>2000) && (tamagawa_encoder_data.speed<129000))|| ((tamagawa_encoder_data.speed<(-2000)) && (tamagawa_encoder_data.speed>(-129000)))){
+			tamagawa_encoder_data.excessive_acceleration_error_count++;
+			if(tamagawa_encoder_data.excessive_acceleration_error_count>2){tamagawa_encoder_data.encoder_state=encoder_error_acceleration;}
+		}
+	}
 }
-	tamagawa_encoder_data.encoder_command=0xA2;
-	HAL_GPIO_WritePin(GPIOC,GPIO_PIN_13, 1);//toggle driver enable pin in half-duplex rs485
-	HAL_StatusTypeDef err_code = HAL_UART_Transmit(&huart2, &tamagawa_encoder_data.encoder_command, 1,1); //using blocking mode TX because DE pin has to be toggled reaaly fast to not break first byte of received data
-	HAL_GPIO_WritePin(GPIOC,GPIO_PIN_13, 0);
-	if(err_code!=HAL_OK){
-		tamagawa_encoder_data.encoder_state=encoder_error_uart_busy;
+
+HAL_StatusTypeDef tamagawa_encoder_read_eeprom(uint8_t address, uint8_t * receivedByte){
+
+	uint8_t received_data [4];
+	HAL_StatusTypeDef status=HAL_OK;
+	tamagawa_encoder_data.motor_eeprom_request [0] = 0xEA;
+	tamagawa_encoder_data.motor_eeprom_request [1] = address;
+	tamagawa_encoder_data.motor_eeprom_request [2] = tamagawa_encoder_data.motor_eeprom_request [0] ^tamagawa_encoder_data.motor_eeprom_request [1];
+	status = HAL_UART_Receive_DMA(&huart2, received_data, 4);
+	if(status!=HAL_OK){
+		tamagawa_encoder_data.communication_error_count++;
+		if(tamagawa_encoder_data.communication_error_count>10){tamagawa_encoder_data.encoder_state=encoder_error_no_communication;memset(&tamagawa_encoder_data,0,sizeof(tamagawa_encoder_data_t));inverter_error_trip(encoder_error_communication);}
 	}
-	HAL_UART_Receive_DMA(&huart2, &tamagawa_encoder_data.motor_data_response_packet, 10);//start listening for response, it will be automatically copied by DMA after reception
+	HAL_GPIO_WritePin(GPIOC,GPIO_PIN_13, 1);
+	if(HAL_UART_Transmit(&huart2, tamagawa_encoder_data.motor_eeprom_request, 3, 1)){inverter_error_trip(internal_software);}
+	HAL_GPIO_WritePin(GPIOC,GPIO_PIN_13, 0);
+	osDelay(1);
+	uint8_t xor_cheksum=0;
+	for(uint8_t i=0;i<3;i++){
+		xor_cheksum^=received_data[i];
+	}
+	if(xor_cheksum!=received_data[3]){status=HAL_ERROR;tamagawa_encoder_data.checksum_error_count++;}
+	*receivedByte=received_data[2];
+
+
+	return(status);
+}
+
+void tamagawa_encoder_motor_identification(){
+	for(uint8_t i=0;i<80;i++){
+		uint8_t received_data=0;
+		if(tamagawa_encoder_read_eeprom(i,&received_data)!=HAL_OK){i--;if(tamagawa_encoder_data.communication_error_count>9){break;}}else{
+			tamagawa_encoder_data.motor_eeprom[i]=received_data;}
+	}
+	if(tamagawa_encoder_data.communication_error_count>9){inverter_error_trip(encoder_error_communication);}else{
+	tamagawa_encoder_data.encoder_state=encoder_ok;
+	if(inverter_error==encoder_error_communication){inverter_error=no_error;}
+	tamagawa_encoder_data.encoder_command=0x1A;}
 }
 

@@ -59,7 +59,7 @@ parameter_set_t parameter_set={
 		.motor_max_current=6.0f, //14.3 according to datasheet
 		.motor_nominal_current=4.7f,
 		.motor_pole_pairs=4, //4 for abb motor 5 for bch and mitsubishi hf-kn43
-		.motor_max_voltage=110.0f,
+		.motor_max_voltage=43.0f,
 		.motor_max_torque=7.17f,
 		.motor_nominal_torque=2.39f,
 		.motor_nominal_speed=3000,
@@ -68,10 +68,10 @@ parameter_set_t parameter_set={
 		.motor_ls=0.00353f, //winding inducatnce in H
 		.motor_K=0.03288f,  //electical constant in V/(rad/s*pole_pairs) 1000RPM=104.719rad/s UPDATE WHEN CHANGING POLE PAIRS
 		.motor_feedback_type=tamagawa_encoder,
-		.encoder_electric_angle_correction=-90, //-90 for abb BSM, 0 for bch, 0 for abb esm18, 60 for hf-kn43
+		.encoder_electric_angle_correction=0, //-90 for abb BSM, 0 for bch, 0 for abb esm18, 60 for hf-kn43
 		.encoder_resolution=5000,
 
-		.current_filter_ts=0.002f,
+		.current_filter_ts=0.001f,
 		.torque_current_ctrl_proportional_gain=3.9f, //gain in V/A
 		.torque_current_ctrl_integral_gain=1000.0f, //
 		.field_current_ctrl_proportional_gain=6.1f,
@@ -120,7 +120,7 @@ float electric_angle=0.0f; //stator voltage vector angle
 float electric_angle_setpoint=0.0f; //electric angle to set in manual mode
 float dc_link_to_duty_cycle_ratio=0.0f;
 volatile float duty_cycle=0.0f;
-float calculated_duty_cycle=0.0f;
+float calculated_voltage_vector=0.0f;
 const uint16_t duty_cycle_limit=DUTY_CYCLE_LIMIT;
 
 float U_DClink=0.0f;
@@ -378,8 +378,8 @@ void TIM3_IRQHandler(void)
 {
   /* USER CODE BEGIN TIM3_IRQn 0 */
 	HAL_ADC_Start_DMA(&hadc1, ADC_rawdata, 4);//start ADC sampling and wait for ADC to finish to continue with control loop, in meantime read position from serial encoders
-	if(parameter_set.motor_feedback_type==tamagawa_encoder){tamagawa_encoder_read_position();}
-	if(parameter_set.motor_feedback_type==mitsubishi_encoder && mitsubishi_encoder_data.motor_power!=0){mitsubishi_encoder_send_command();}
+	if(parameter_set.motor_feedback_type==tamagawa_encoder && tamagawa_encoder_data.encoder_state==encoder_ok ){tamagawa_encoder_read_position();}
+	if((parameter_set.motor_feedback_type==mitsubishi_encoder) && (mitsubishi_encoder_data.encoder_state!=encoder_error_no_communication || mitsubishi_encoder_data.encoder_state!=encoder_error_cheksum )){mitsubishi_encoder_send_command();}
   /* USER CODE END TIM3_IRQn 0 */
   HAL_TIM_IRQHandler(&htim3);
   /* USER CODE BEGIN TIM3_IRQn 1 */
@@ -489,9 +489,17 @@ void DMA2_Stream0_IRQHandler(void)
 				dc_link_to_duty_cycle_ratio=DUTY_CYCLE_LIMIT/U_DClink_filtered;
 
 				if(U_DClink_filtered>INVERTER_OVERVOLTAGE_LEVEL ){OV_measurement_error_counter++;}else{OV_measurement_error_counter=0;}
-				if(U_DClink_filtered<INVERTER_UNDERVOLTAGE_LEVEL){UV_measurement_error_counter++;}else{UV_measurement_error_counter=0;}
+				if(U_DClink_filtered<parameter_set.motor_max_voltage){UV_measurement_error_counter++;}else{UV_measurement_error_counter=0;}
 				if(OV_measurement_error_counter>3){inverter_error_trip(overvoltage);}
-				if(UV_measurement_error_counter>3){inverter_error_trip(undervoltage);}
+				if(UV_measurement_error_counter>3){
+					if(inverter_state!=run && inverter_error!=undervoltage){
+						inverter_error_trip(undervoltage_condition);
+					}else{
+						inverter_error_trip(undervoltage);
+					}
+				}
+				//undervoltage during run is a persistent error, undervoltage condition during
+				if(inverter_error==undervoltage_condition && U_DClink_filtered>=parameter_set.motor_max_voltage){inverter_error=no_error;}
 				//current calculation
 				I_U_raw=ADC_rawdata[0]-I_U_zerocurrentreading;
 				I_V_raw=ADC_rawdata[1]-I_V_zerocurrentreading;
@@ -554,20 +562,6 @@ void DMA2_Stream0_IRQHandler(void)
 					if(electric_angle-actual_electric_angle>180.0f){actual_torque_angle=(electric_angle-actual_electric_angle) - 360.0f;}
 					else if(electric_angle-actual_electric_angle<(-180.0f)){actual_torque_angle=electric_angle-actual_electric_angle + 360.0f;}
 					else{actual_torque_angle=electric_angle-actual_electric_angle;}
-					/*speed_measurement_loop_i++;
-					if(speed_measurement_loop_i>=10){
-
-						//speed(rpm)=(position pulse delta/enc resolution)*(60s/sample time(s))
-						//speed=(delta/131072)*(60/0,006)
-						speed=((float)mitsubishi_encoder_data.encoder_position-(float)mitsubishi_encoder_data.last_encoder_position_speed_loop)*0.228879f;
-						if(speed>15000.0f){speed-=30000.0f;}if(speed<-15000.0f){speed+=30000.0f;}
-
-						mitsubishi_encoder_data.last_encoder_position_speed_loop=mitsubishi_encoder_data.encoder_position;
-						speed_measurement_loop_i=0;
-					}
-					filtered_speed=LowPassFilter(parameter_set.speed_filter_ts,speed, &last_filtered_actual_speed);
-					modbus_registers_buffer[13]=(int16_t)(filtered_speed);*/
-
 				}
 				if(parameter_set.motor_feedback_type==tamagawa_encoder){
 					encoder_actual_position=tamagawa_encoder_data.encoder_position>>1; //divide by 2 to fit into uint16
@@ -635,7 +629,12 @@ void DMA2_Stream0_IRQHandler(void)
 					temp_electric_angle_rad=3.1415f+(3.1415f+temp_electric_angle_rad); //convert value from +-180 deg to 0-360deg
 				}
 				electric_angle=(temp_electric_angle_rad/3.141592f)*180.0f;
-				calculated_duty_cycle=hypotf(U_alpha,U_beta)*dc_link_to_duty_cycle_ratio;
+				calculated_voltage_vector=hypotf(U_alpha,U_beta);
+				//calculated_duty_cycle=hypotf(U_alpha,U_beta)*dc_link_to_duty_cycle_ratio;
+				//limit motor voltage
+				if(calculated_voltage_vector>parameter_set.motor_max_voltage){
+					calculated_voltage_vector=parameter_set.motor_max_voltage;
+				}
 
 				//reset pid controllers data for next startup if stopped at speed/torque !=0. This avoids high Ud/Uq voltage output at startup
 				if(inverter_state!=run){
@@ -648,11 +647,12 @@ void DMA2_Stream0_IRQHandler(void)
 					speed_controller_data.last_error=0.0f;
 					speed_controller_data.last_integral=0.0f;
 					speed_controller_data.last_output=0.0f;
+					calculated_voltage_vector=0.0f;
 				}
 				//update voltages in TIM1 compare registers to output them to motor
 				if(inverter_state==run){
 					//output_svpwm((uint16_t)electric_angle, (uint16_t)calculated_duty_cycle);
-					output_sine_pwm(electric_angle, (uint16_t) calculated_duty_cycle);
+					output_sine_pwm(electric_angle, calculated_voltage_vector*dc_link_to_duty_cycle_ratio);
 				}else{
 					//output_svpwm(0, 0); //svpwm produces vibrations at full speed and current ripple at low speeds
 					output_sine_pwm(0.0f, 0);
