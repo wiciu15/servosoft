@@ -50,7 +50,7 @@ void calculateBEMF(estimator_t * estimator, float Ialpha, float Ibeta, float Ual
 	}
 	estimator->estim_speed_rpm=(estimator->estim_speed*9.549297)/parameter_set.motor_pole_pairs;
 
-	estimator->estim_angle_sum+=estimator->estim_speed*0.0002f;
+	estimator->estim_angle_sum+=estimator->estim_speed*estimator->sampling_time;
 	estimator->estim_angle=fmodf(estimator->estim_angle_sum,6.28f);
 	estimator->estim_angle_deg=(estimator->estim_angle*180.0f)/3.14159f;
 	//estimator->estim_angle_abs=fabs(estimator->estim_angle);

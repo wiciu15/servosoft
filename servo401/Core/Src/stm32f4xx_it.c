@@ -64,9 +64,9 @@ parameter_set_t parameter_set={
 		.motor_nominal_torque=2.39f,
 		.motor_nominal_speed=3000,
 		.motor_max_speed=5000,
-		.motor_rs=0.42f,
-		.motor_ls=0.00353f, //winding inducatnce in H
-		.motor_K=0.03288f,  //electical constant in V/(rad/s*pole_pairs) 1000RPM=104.719rad/s UPDATE WHEN CHANGING POLE PAIRS
+		.motor_rs=0.25f,
+		.motor_ls=0.002f, //winding inductance in H
+		.motor_K=0.18f,  //electical constant in V/(rad/s*pole_pairs) 1000RPM=104.719rad/s
 		.motor_feedback_type=tamagawa_encoder,
 		.encoder_electric_angle_correction=0, //-90 for abb BSM, 0 for bch, 0 for abb esm18, 60 for hf-kn43
 		.encoder_resolution=5000,
@@ -166,6 +166,8 @@ float U_q = 0.0f;
 
 float U_alpha = 0.0f;
 float U_beta = 0.0f;
+
+float estim_torque_angle=0.0f;
 
 uint8_t encoder_positioned=0;
 uint16_t encoder_correction_abz=40;
@@ -532,9 +534,6 @@ void DMA2_Stream0_IRQHandler(void)
 					if(encoder_positioned){
 						encoder_actual_position=parameter_set.encoder_resolution-TIM2->CNT; //flip direction of encoder
 						actual_electric_angle=(float)(encoder_actual_position % (parameter_set.encoder_resolution/parameter_set.motor_pole_pairs))*0.36f-parameter_set.encoder_electric_angle_correction;  //calculate rotor electric angle
-						if(electric_angle-actual_electric_angle>180.0f){actual_torque_angle=(electric_angle-actual_electric_angle) - 360.0f;}
-						else if(electric_angle-actual_electric_angle<(-180.0f)){actual_torque_angle=electric_angle-actual_electric_angle + 360.0f;}
-						else{actual_torque_angle=electric_angle-actual_electric_angle;}
 						speed_measurement_loop_i++;
 						if(speed_measurement_loop_i>=10){
 							speed=((actual_electric_angle-last_actual_electric_angle)/parameter_set.motor_pole_pairs)/0.012f; //speed(rpm) = ((x(deg)/polepairs)/360deg)/(0,002(s)/60s)
@@ -559,20 +558,17 @@ void DMA2_Stream0_IRQHandler(void)
 						if(actual_electric_angle>=360.0f){actual_electric_angle-=360.0f;}
 						if(actual_electric_angle<0){actual_electric_angle+=360.0f;}
 					}
-					if(electric_angle-actual_electric_angle>180.0f){actual_torque_angle=(electric_angle-actual_electric_angle) - 360.0f;}
-					else if(electric_angle-actual_electric_angle<(-180.0f)){actual_torque_angle=electric_angle-actual_electric_angle + 360.0f;}
-					else{actual_torque_angle=electric_angle-actual_electric_angle;}
 				}
 				if(parameter_set.motor_feedback_type==tamagawa_encoder){
 					encoder_actual_position=tamagawa_encoder_data.encoder_position>>1; //divide by 2 to fit into uint16
 					actual_electric_angle=(((fmodf(tamagawa_encoder_data.encoder_position, 131072.0f/(float)parameter_set.motor_pole_pairs))/(131072.0f/(float)parameter_set.motor_pole_pairs))*360.0f)+parameter_set.encoder_electric_angle_correction;
 					if(actual_electric_angle>=360.0f){actual_electric_angle-=360.0f;}
 					if(actual_electric_angle<0){actual_electric_angle+=360.0f;} //make sure to get 0-360 deg after correction
-					if(electric_angle-actual_electric_angle>180.0f){actual_torque_angle=(electric_angle-actual_electric_angle) - 360.0f;}
-					else if(electric_angle-actual_electric_angle<(-180.0f)){actual_torque_angle=electric_angle-actual_electric_angle + 360.0f;}
-					else{actual_torque_angle=electric_angle-actual_electric_angle;}
 				}
-
+				//calculate torque angle
+				if(electric_angle-actual_electric_angle>180.0f){actual_torque_angle=(electric_angle-actual_electric_angle) - 360.0f;}
+				else if(electric_angle-actual_electric_angle<(-180.0f)){actual_torque_angle=electric_angle-actual_electric_angle + 360.0f;}
+				else{actual_torque_angle=electric_angle-actual_electric_angle;}
 
 				if(speed_measurement_loop_i>=5){
 					speed_calc_angle_delta=actual_electric_angle-last_actual_electric_angle;
@@ -621,6 +617,9 @@ void DMA2_Stream0_IRQHandler(void)
 					inv_park_transform(U_d, U_q, actual_electric_angle, &U_alpha, &U_beta);
 				}
 				calculateBEMF(&estimator, I_alpha, I_beta, U_alpha, U_beta);
+				if(electric_angle-estimator.estim_angle_deg>180.0f){estim_torque_angle=(electric_angle-actual_electric_angle) - 360.0f;}
+				else if(electric_angle-estimator.estim_angle_deg<(-180.0f)){estim_torque_angle=electric_angle-actual_electric_angle + 360.0f;}
+				else{estim_torque_angle=electric_angle-estimator.estim_angle_deg;}
 
 				//calculate output vector angle in degrees
 				float temp_electric_angle_rad=0.0f;
