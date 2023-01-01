@@ -27,6 +27,7 @@ extern tamagawa_encoder_data_t tamagawa_encoder_data;
 
 void tamagawa_encoder_read_position(void);
 HAL_StatusTypeDef tamagawa_encoder_read_eeprom(uint8_t address,uint8_t * receivedByte);
+HAL_StatusTypeDef tamagawa_encoder_write_eeprom(uint8_t address, uint8_t data);
 void tamagawa_encoder_motor_identification();
 
 #endif /* INC_TAMAGAWA_ENCODER_H_ */

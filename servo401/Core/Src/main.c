@@ -728,7 +728,6 @@ void StartDefaultTask(void *argument)
 	HAL_TIM_Base_Start_IT(&htim4);
 	HAL_TIM_Base_Start_IT(&htim1); //16 khz ISR synchronized with PWM
 	HAL_TIM_Encoder_Start(&htim2, TIM_CHANNEL_ALL);
-
 	/* Infinite loop */
 	for(;;)
 	{

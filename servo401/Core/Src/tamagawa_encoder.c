@@ -83,6 +83,33 @@ HAL_StatusTypeDef tamagawa_encoder_read_eeprom(uint8_t address, uint8_t * receiv
 	return(status);
 }
 
+HAL_StatusTypeDef tamagawa_encoder_write_eeprom(uint8_t address, uint8_t data){
+	uint8_t data_to_send [4];
+	uint8_t received_data[4];
+	HAL_StatusTypeDef status = HAL_OK;
+	if(address>80){status = HAL_ERROR;}else{
+		data_to_send[0]=0x32;
+		data_to_send[1]=address;
+		data_to_send[2]=data;
+		data_to_send[3]=data_to_send[0]^data_to_send[1]^data_to_send[2];
+		status = HAL_UART_Receive_DMA(&huart2, received_data, 4);
+		if(status!=HAL_OK){
+			tamagawa_encoder_data.communication_error_count++;
+			if(tamagawa_encoder_data.communication_error_count>10){tamagawa_encoder_data.encoder_state=encoder_error_no_communication;memset(&tamagawa_encoder_data,0,sizeof(tamagawa_encoder_data_t));inverter_error_trip(encoder_error_communication);}
+		}else{
+			HAL_GPIO_WritePin(GPIOC,GPIO_PIN_13, 1);
+			if(HAL_UART_Transmit(&huart2, data_to_send, 4, 1)){inverter_error_trip(internal_software);}
+			HAL_GPIO_WritePin(GPIOC,GPIO_PIN_13, 0);
+		}
+		osDelay(1);
+		if(received_data[1]!=address ||received_data[2]!=data || received_data[3]!=(received_data[0]^received_data[1]^received_data[2])){
+			status=HAL_ERROR;
+		}
+	}
+	return status;
+
+}
+
 void tamagawa_encoder_motor_identification(){
 	for(uint8_t i=0;i<80;i++){
 		uint8_t received_data=0;
