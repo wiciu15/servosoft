@@ -18,6 +18,7 @@ typedef struct _tamagawa_encoder_data_t {
 	uint8_t excessive_acceleration_error_count;
 	uint8_t communication_error_count;
 	uint8_t motor_data_response_packet[11];//full response to command
+	uint8_t encoder_id[2];
 	uint8_t motor_eeprom[80];
 	uint8_t motor_eeprom_request[3];
 	uint8_t encoder_command;
@@ -29,5 +30,6 @@ void tamagawa_encoder_read_position(void);
 HAL_StatusTypeDef tamagawa_encoder_read_eeprom(uint8_t address,uint8_t * receivedByte);
 HAL_StatusTypeDef tamagawa_encoder_write_eeprom(uint8_t address, uint8_t data);
 void tamagawa_encoder_motor_identification();
+HAL_StatusTypeDef tamagawa_encoder_read_id(void);
 
 #endif /* INC_TAMAGAWA_ENCODER_H_ */
