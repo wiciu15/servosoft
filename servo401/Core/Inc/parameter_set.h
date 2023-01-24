@@ -10,7 +10,7 @@
 
 #include "inverter.h"
 
-typedef enum {no_feedback,abz_encoder,mitsubishi_encoder,tamagawa_encoder}motor_feedback_type_t;
+typedef enum {no_feedback,abz_encoder,mitsubishi_encoder,tamagawa_encoder,delta_encoder}motor_feedback_type_t;
 
 typedef struct _parameter_set_t{
 	float motor_max_current; //current for motor overcurrent trip
