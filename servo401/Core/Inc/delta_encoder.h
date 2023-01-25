@@ -14,6 +14,8 @@
 typedef struct _delta_encoder_data_t {
 	encoder_state_t encoder_state;
 	uint32_t encoder_position;
+	uint32_t encoder_position_indexed;
+	uint32_t position_offset;
 	float motor_electric_angle;
 	uint32_t last_encoder_position;
 	uint8_t checksum_error_count;
@@ -24,6 +26,7 @@ typedef struct _delta_encoder_data_t {
 	uint8_t encoder_command;
 	uint8_t encoder_hall_sensors;
 	uint8_t last_encoder_hall_sensors;
+	uint8_t encoder_hall_sensors_decimal;
 	uint32_t encoder_resolution;
 }delta_encoder_data_t;
 extern delta_encoder_data_t delta_encoder_data;

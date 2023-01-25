@@ -737,7 +737,6 @@ void StartDefaultTask(void *argument)
 		process_modbus_command();
 		if(parameter_set.motor_feedback_type == mitsubishi_encoder && mitsubishi_encoder_data.encoder_state==encoder_eeprom_reading){mitsubishi_motor_identification();}
 		if(parameter_set.motor_feedback_type==tamagawa_encoder && tamagawa_encoder_data.encoder_state==encoder_eeprom_reading){tamagawa_encoder_motor_identification();	}
-		if(parameter_set.motor_feedback_type==delta_encoder){delta_encoder_read_position();}
 		osDelay(1);
 	}
 	/* USER CODE END 5 */

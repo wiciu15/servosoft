@@ -32,6 +32,7 @@
 #include "lookuptables.h"
 #include "mitsubishi_encoder.h"
 #include "tamagawa_encoder.h"
+#include "delta_encoder.h"
 #include "parameter_set.h"
 #include "estimator.h"
 /* USER CODE END Includes */
@@ -56,9 +57,9 @@
 
 //DEFAULT PARAMETER SET FROM DRIVE ROM, values would reset between restarts, @TODO: read and write parameter set from flash on boot
 parameter_set_t parameter_set={
-		.motor_max_current=6.0f, //14.3 according to datasheet
-		.motor_nominal_current=4.7f,
-		.motor_pole_pairs=4, //4 for abb motor 5 for bch and mitsubishi hf-kn43
+		.motor_max_current=3.0f, //14.3 according to datasheet
+		.motor_nominal_current=2.5f,
+		.motor_pole_pairs=5, //4 for abb motor 5 for bch and mitsubishi hf-kn43
 		.motor_max_voltage=43.0f,
 		.motor_max_torque=7.17f,
 		.motor_nominal_torque=2.39f,
@@ -68,7 +69,7 @@ parameter_set_t parameter_set={
 		.motor_ls=0.002f, //winding inductance in H
 		.motor_K=0.18f,  //electical constant in V/(rad/s*pole_pairs) 1000RPM=104.719rad/s
 		.motor_feedback_type=delta_encoder,
-		.encoder_electric_angle_correction=0, //-90 for abb BSM, 0 for bch, 0 for abb esm18, 60 for hf-kn43
+		.encoder_electric_angle_correction=-60, //-90 for abb BSM, 0 for bch, 0 for abb esm18, 60 for hf-kn43
 		.encoder_resolution=5000,
 
 		.current_filter_ts=0.001f,
@@ -382,7 +383,8 @@ void TIM3_IRQHandler(void)
 	HAL_ADC_Start_DMA(&hadc1, ADC_rawdata, 4);//start ADC sampling and wait for ADC to finish to continue with control loop, in meantime read position from serial encoders
 	if(parameter_set.motor_feedback_type==tamagawa_encoder && tamagawa_encoder_data.encoder_state==encoder_ok ){tamagawa_encoder_read_position();}
 	if((parameter_set.motor_feedback_type==mitsubishi_encoder) && (mitsubishi_encoder_data.encoder_state!=encoder_error_no_communication || mitsubishi_encoder_data.encoder_state!=encoder_error_cheksum )){mitsubishi_encoder_send_command();}
-  /* USER CODE END TIM3_IRQn 0 */
+	if(parameter_set.motor_feedback_type==delta_encoder){delta_encoder_read_position();} //@TODO delta encoder error handling/trip
+	/* USER CODE END TIM3_IRQn 0 */
   HAL_TIM_IRQHandler(&htim3);
   /* USER CODE BEGIN TIM3_IRQn 1 */
 
@@ -562,6 +564,12 @@ void DMA2_Stream0_IRQHandler(void)
 				if(parameter_set.motor_feedback_type==tamagawa_encoder){
 					encoder_actual_position=tamagawa_encoder_data.encoder_position>>1; //divide by 2 to fit into uint16
 					actual_electric_angle=(((fmodf(tamagawa_encoder_data.encoder_position, 131072.0f/(float)parameter_set.motor_pole_pairs))/(131072.0f/(float)parameter_set.motor_pole_pairs))*360.0f)+parameter_set.encoder_electric_angle_correction;
+					if(actual_electric_angle>=360.0f){actual_electric_angle-=360.0f;}
+					if(actual_electric_angle<0){actual_electric_angle+=360.0f;} //make sure to get 0-360 deg after correction
+				}
+				if(parameter_set.motor_feedback_type==delta_encoder){
+					encoder_actual_position=delta_encoder_data.encoder_position_indexed/10;
+					actual_electric_angle=(((fmodf(delta_encoder_data.encoder_position_indexed, 640000.0f/(float)parameter_set.motor_pole_pairs))/(640000.0f/(float)parameter_set.motor_pole_pairs))*360.0f)+parameter_set.encoder_electric_angle_correction;
 					if(actual_electric_angle>=360.0f){actual_electric_angle-=360.0f;}
 					if(actual_electric_angle<0){actual_electric_angle+=360.0f;} //make sure to get 0-360 deg after correction
 				}
